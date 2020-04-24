@@ -27,11 +27,8 @@ tests are expectin the lookup tables.
 
 ## Installation
 
-To get ACOMA use the standard:
-
-```bash
-go get -u github.com/lanl/acoma
-```
+To get ACOMA clone this repository and build the packages and commands
+that you are interested in.
 
 ## Documentation
 

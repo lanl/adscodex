@@ -18,7 +18,8 @@ go get -u github.com/klauspost/reedsolomon
 ### Lookup Tables
 
 Lookup tables speed up significantly ACOMA. You can generate them
-using the tblgen tool (see below), or download them from github:
+using the tblgen tool (see below), or download them from github (1.7
+GB file):
 
 https://github.com/lanl/acoma/releases/download/0.9/tables.zip
 
@@ -130,4 +131,4 @@ The unit tests will slowly be extended to cover all use cases.
 
 There are multiple TODO and FIXME comments in the source code that
 describe things that are missing, or implementation restrictions that
-shluld be fixed eventually.
+should be fixed eventually.

@@ -2,7 +2,7 @@ package l0
 
 import (
 	"errors"
-_	"fmt"
+	"fmt"
 	"acoma/oligo"
 	"acoma/oligo/short"
 	"acoma/criteria"
@@ -15,6 +15,16 @@ var decodeTables map[criteria.Criteria] map[int]*LookupTable;
 func Decode(prefix, o oligo.Oligo, c criteria.Criteria) (val uint64, err error) {
 	var tbl *LookupTable
 	var so oligo.Oligo
+
+	if !c.Check(prefix) {
+		err = fmt.Errorf("invalid prefix: %v\n", prefix)
+		return
+	}
+
+	if !c.Check(o) {
+		err = fmt.Errorf("invalid oligo: %v\n", o)
+		return
+	}
 
 	if decodeTables != nil {
 		// find tables for the criteria (if any)

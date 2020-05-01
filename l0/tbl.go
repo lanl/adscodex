@@ -80,6 +80,16 @@ func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (o oligo.Oligo, val 
 		return short.New(lt.oligolen), val
 	}
 
+	if tbl == nil {
+		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
+		panic("tbl is null")
+	}
+
+	if so == nil {
+		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
+		panic("so is null")
+	}
+
 	idx := so.Uint64() >> tbl.bits
 	if idx > uint64(len(tbl.tbl)) {
 		idx = uint64(len(tbl.tbl) - 1)

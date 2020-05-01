@@ -9,6 +9,7 @@ import (
 //	"time"
 	"acoma/oligo"
 	"acoma/oligo/long"
+	"acoma/oligo/short"
 	"acoma/l0"
 	"acoma/criteria"
 )
@@ -44,7 +45,8 @@ func initTest(t *testing.T) {
 func TestEncode(t *testing.T) {
 	initTest(t)
 
-	for n := 0; n < 10; n++ {
+	fmt.Printf("TestEncode:\n")
+	for n := 0; n < 2; n++ {
 		sz := rand.Intn(1<<16)
 		data := make([]byte, sz)
 		for i := 0; i < sz; i++ {
@@ -56,6 +58,58 @@ func TestEncode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("encode error: %v\n", err)
 		}
+
+		fmt.Printf("\nDecoding...\n")
+		de := cdc.Decode(0, nextaddr, oligos)
+		if len(de) == 0 {
+			t.Fatalf("decode error no data\n")
+		} else if len(de) != 1 {
+			t.Fatalf("decode error: too many data extents: %d\n", len(de))
+		}
+
+		ddata := de[0].Data
+		if len(data) != len(ddata) {
+			t.Fatalf("decoded data length doesn't match: %d %d\n", len(data), len(ddata))
+		}
+
+		for i := 0; i < len(data); i++ {
+			if data[i] != ddata[i] {
+				fmt.Printf("%v\n", data)
+				fmt.Printf("%v\n", ddata)
+				t.Fatalf("decoded data doesn't match")
+			}
+		}
+	}
+}
+
+func TestErrors(t *testing.T) {
+	initTest(t)
+
+	fmt.Printf("TestErrors:\n")
+	for n := 0; n < 2; n++ {
+		fmt.Printf("Try %d\n", n)
+		sz := rand.Intn(1<<16)
+		data := make([]byte, sz)
+		for i := 0; i < sz; i++ {
+			data[i] = byte(rand.Intn(256))
+		}
+
+		fmt.Printf("--------------- %d bytes ------------\n", sz)
+		nextaddr, oligos, err := cdc.Encode(0, data)
+		if err != nil {
+			t.Fatalf("encode error: %v\n", err)
+		}
+
+		// add another copy of the first oligo
+		oligos = append(oligos, oligos[0])
+
+		// add an oligo with an error
+		o := oligos[rand.Int31n(int32(len(oligos) - 1))]
+		p := int(rand.Int31n(int32(o.Len())))
+		o1 := o.Slice(0, p)
+		o1.Append(short.FromString1("T"))
+		o1.Append(o.Slice(p+1, 0))
+		oligos = append(oligos, o1)
 
 		fmt.Printf("\nDecoding...\n")
 		de := cdc.Decode(0, nextaddr, oligos)

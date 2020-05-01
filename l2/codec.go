@@ -4,6 +4,7 @@ import (
 	"errors"
 _	"fmt"
 	"math/rand"
+	"runtime"
 	"acoma/oligo"
 	"acoma/criteria"
 	"acoma/l0"
@@ -28,6 +29,15 @@ type DataExtent struct {
 	Offset	uint64
 	Data	[]byte
 }
+
+type doligo struct {
+	addr	uint64
+	ef	bool
+	data	[][]byte	// if nil (and failed is also nil), end of goroutine
+	failed	oligo.Oligo	// we couldn't decode it
+}
+
+var Eec = errors.New("parity blocks don't match")
 
 // Creates a new L2 codec
 // Parameters:
@@ -149,25 +159,51 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 	var failed []oligo.Oligo
 	var last, l uint64
 
-	doligos := make(map[uint64] [][]byte)	// data oligos
-	eoligos := make(map[uint64] [][]byte)	// erasure oligos
+	// maps from oligo addresses to a list of data blocks for that address
+	// The first array of the entry is always dblknum elements long len([][][]byte) == dblknum
+	// The second array contains all different values for the data block at that place of the oligo
+	// The third array is always 4 bytes long and represents the content of the data block
+	doligos := make(map[uint64] [][][]byte)	// data oligos (list per address)
+	eoligos := make(map[uint64] [][][]byte)	// erasure oligos (list per address)
 
 	// first try without forcing metadata recovery at L1
 	last, failed = c.decodeOligos(start, end, oligos, doligos, eoligos, false)
+//	fmt.Printf("easy: last %d failed %d\n", last, len(failed))
 	data = c.recoverData(start, last, doligos, eoligos)
 	if len(data) == 1 {
 		// we recovered all the data, return
 		goto done
 	}
+/*
+	{
+		n := 0
+		for _, de := range data {
+			n += len(de.Data)
+		}
+
+		fmt.Printf("got %d extents, %d/%d bytes, trying harder...\n", len(data), n, last * uint64(c.c1.DataLen()))
+	}
+*/
 
 	// Now try harder. We processed all good oligos, try to process only the bad ones
-	l, _ = c.decodeOligos(start, end, failed, doligos, eoligos, true)
+	l, failed = c.decodeOligos(start, end, failed, doligos, eoligos, true)
+//	fmt.Printf("hard: last %d failed %d\n", last, len(failed))
 	if l > last {
 		last = l
 	}
 	data = c.recoverData(start, last, doligos, eoligos)
 
 done:
+/*
+	{
+		n := 0
+		for _, de := range data {
+			n += len(de.Data)
+		}
+
+		fmt.Printf("got %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
+	}
+*/
 	if len(data) != 0 {
 		var dsz uint64
 
@@ -191,47 +227,125 @@ done:
 // appropriate maps, depending if the contain data or erasure codes.
 // If the parameter tryhard is true, tells the L1 codec to try harder to recover
 // the metadata
-func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, eoligos map[uint64][][]byte, tryhard bool) (last uint64, failed []oligo.Oligo) {
-	for _, o := range oligos {
-		addr, ef, d, err := c.c1.Decode(c.p5, c.p3, o, tryhard)
-		if err != nil {
-			if err == l1.Eprimer {
-				// one of the primers didn't match, just discard the oligo
-				continue
-			} else if err == l1.Emetadata {
-				// We couldn't recover the metadata without hard work,
-				// save the oligo for later
-				// First we are going to try to recover the data using the
-				// erasure oligos, if that fails, we'll have to try harder
-				// to recover the metadata and try again
-
-				failed = append(failed, o)
-			} else {
-				panic("unknown error")
-			}
+func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, eoligos map[uint64][][][]byte, tryhard bool) (last uint64, failed []oligo.Oligo) {
+	// Decode in parallel
+	procnum := runtime.NumCPU()
+	olperproc := 1 + len(oligos)/procnum
+	ch := make(chan doligo, procnum)
+	for i := 0; i < procnum; i++ {
+		istart := i * olperproc
+		if istart >= len(oligos) {
+			break
 		}
 
-		if addr < start || addr >= end {
+		iend := (i+1) * olperproc
+		if iend > len(oligos) {
+			iend = len(oligos)
+		}
+
+		go func(s, e int, oligos []oligo.Oligo) {
+			var do doligo
+
+			ols := oligos[s:e]
+			for _, o := range ols {
+				var err error
+
+//				if n%1000 == 0 && n != 0 {
+//					fmt.Printf(".")
+//				}
+
+				do.failed = nil
+				do.addr, do.ef, do.data, err = c.c1.Decode(c.p5, c.p3, o, tryhard)
+				if err != nil {
+					if err == l1.Eprimer {
+						// one of the primers didn't match, just discard the oligo
+						continue
+					} else if err == l1.Emetadata {
+						// We couldn't recover the metadata without hard work,
+						// save the oligo for later
+						// First we are going to try to recover the data using the
+						// erasure oligos, if that fails, we'll have to try harder
+						// to recover the metadata and try again
+
+						do.failed = o
+					} else {
+						panic("unknown error")
+					}
+				}
+
+				if do.addr < start || do.addr >= end {
+					continue
+				}
+
+				ch <- do
+			}
+
+			do.data = nil
+			do.failed = nil
+			ch <- do
+		} (istart, iend, oligos)
+	}
+
+	for doneprocs := 0; doneprocs < procnum; {
+		do := <- ch
+		if do.data == nil && do.failed == nil {
+			doneprocs++
 			continue
 		}
 
+		if do.failed != nil {
+			failed = append(failed, do.failed)
+			continue
+		}
+
+		addr, ef, d := do.addr, do.ef, do.data
 		if addr > last {
 			last = addr
 		}
 
+		var dd [][][]byte
 		if ef {
-			if eoligos[addr] != nil {
-				panic("duplicate addresses")
-			}
-
-			eoligos[addr] = d
+			dd = eoligos[addr]
 		} else {
-			if doligos[addr] != nil {
-				panic("duplicate addresses")
+			dd = doligos[addr]
+		}
+
+		if dd == nil {
+			dd = make([][][]byte, c.dblknum)
+		}
+
+		// for each data block from the new oligo, add it to the appropriate place,
+		// not nil and if not already there
+		for i := 0; i < c.dblknum; i++ {
+			di := d[i]
+			if di == nil {
+				// no data, skip
+				continue
 			}
 
-			doligos[addr] = d
+			add := dd[i] == nil
+			ddi := dd[i]
+			for j := 0; !add && j < len(ddi); j++ {
+				ddj := ddi[j]
+				for n := 0; n < len(ddj); n++ {
+					if ddj[n] != di[n] {
+						add = true
+						break
+					}
+				}
+			}
+
+			if add {
+				dd[i] = append(dd[i], d[i])
+			}
 		}
+
+		if ef {
+			eoligos[addr] = dd
+		} else {
+			doligos[addr] = dd
+		}
+		
 	}
 
 	return
@@ -240,14 +354,14 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 // Combine oligos in erasure groups and extract the data from them.
 // If there are ranges of data that are unrecoverable, return multiple
 // extents with all the data that we were able to recover
-func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][]byte) (data []DataExtent) {
-	egrp := make([][][]byte, c.dseqnum + c.rseqnum)
+func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][]byte) (data []DataExtent) {
+	egrp := make([][][][]byte, c.dseqnum + c.rseqnum)
 	for a := start; a < end; a += uint64(c.dseqnum) {
 		for i := 0; i < c.dseqnum; i++ {
 			egrp[i] = doligos[a + uint64(i)]
 			if egrp[i] == nil {
 				// if the whole oligo is missing, put nils for the whole row
-				egrp[i] = make([][]byte, c.dblknum)
+				egrp[i] = make([][][]byte, c.dblknum)
 				for j := 0; j < c.dblknum; j++ {
 					egrp[i][j] = nil
 				}
@@ -259,7 +373,7 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][]b
 			egrp[n] = eoligos[a + uint64(i)]
 			if egrp[n] == nil {
 				// if the whole oligo is missing, put nils for the whole row
-				egrp[n] = make([][]byte, c.dblknum)
+				egrp[n] = make([][][]byte, c.dblknum)
 				for j := 0; j < c.dblknum; j++ {
 					egrp[n][j] = nil
 				}
@@ -335,64 +449,126 @@ func (c *Codec) verifyErasures(egrp [][][]byte) error {
 	return nil
 }
 
-func (c *Codec) recoverECGroup(offset uint64, egrp [][][]byte) (ds []DataExtent) {
-	shards := make([][]byte, c.dseqnum + c.rseqnum)
+// egrp is an erasure group of dseqnum+rseqnum oligos
+// The first index is the place of the oligo in the group
+// The second index is [0,blknum) and represents the data block in the oligo
+// The third index iterates through all possible content of the data blocks from various oligos with the same address
+// The fourth index is [0,4) and represents the content of the data block
+func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExtent) {
+	shards := make([][]byte, c.dseqnum + c.rseqnum)		// Reed-Solomon shards
+	idx := make([]int, c.dseqnum + c.rseqnum)		// indices for each member of the group (if there are multiple data blocks per member)
+	dblks := make([][][]byte, c.dseqnum + c.rseqnum)
+	data := make([][][]byte, c.dseqnum)			// reconstructed data blocks for each position in the erasure group
+
+	for i := 0; i < len(data); i++ {
+		data[i] = make([][]byte, c.dblknum)
+	}
+
+//	for i, m := range egrp {
+//		fmt.Printf("%d: %v\n", i, m)
+//	}
 
 	// each data block within the oligo is processed separately
 	for n := 0; n < c.dblknum; n++ {
-		// collect the slices for the blocks based on a diagonal pattern
-		for i := 0; i < c.dseqnum + c.rseqnum; i++ {
+		// setup the data blocks from the erasure group based on a diagonal pattern
+		for i := 0; i < len(idx); i++ {
 			p := (n + i) % c.dblknum
 			if p >= c.dblknum {
 				p = 0
 			}
 
-			shards[i] = egrp[i][p]
+			idx[i] = 0
+			dblks[i] = egrp[i][p]
 		}
 
-		err := c.ec.ReconstructData(shards)
-		if err == nil {
-			// reconstruction failed
-			// TODO: if we have enough a lot of data
-			// we can try setting random shards to nil and
-			// trying to reconstruct without them
-			continue
-		}
-
-		// move the reconstructed data back to the egrp array
-		for i := 0; i < c.dseqnum; i++ {
-			p := (n + i) % c.dblknum
-			if p >= c.dblknum {
-				p = 0
+		// go over all combinations of data blocks
+		var done bool
+		for !done {
+			// collect the current combination
+//			fmt.Printf("%d idx %v\n", offset, idx)
+			for i, m := range idx {
+				if len(dblks[i]) > m {
+					shards[i] = dblks[i][m]
+				} else {
+					shards[i] = nil
+				}
 			}
 
-			egrp[i][p] = shards[i]
+			// setup the indices for the next combination
+			var i int
+			for i = 0; i < len(idx); i++ {
+				idx[i]++
+				if idx[i] < len(dblks[i]) {
+					break
+				} else {
+					// check if we exhausted all combinations
+					if i+1 == len(idx) {
+						done = true
+					}
+				}
+			}
+
+//			fmt.Printf("%d <<< shard %d: %v\n", offset, n, shards)
+			err := c.ec.Reconstruct(shards)
+			if err == nil {
+				var ok bool
+
+				ok, err = c.ec.Verify(shards)
+				if err == nil && !ok {
+					err = Eec
+				}
+			}
+
+//			fmt.Printf("%d >>> shard %d: %v err %v\n", offset, n, shards, err)
+			if err != nil {
+//				fmt.Printf("reconstructing data failed error %v\n", err)
+				// reconstruction failed
+				// TODO: if we have enough a lot of data
+				// we can try setting random shards to nil and
+				// trying to reconstruct without them
+				continue
+			}
+
+			// move the reconstructed data into an array to recombine
+			// into extents later
+			for i := 0; i < c.dseqnum; i++ {
+				p := (n + i) % c.dblknum
+				if p >= c.dblknum {
+					p = 0
+				}
+
+				data[i][p] = shards[i]
+			}
+
+			// since we found a match, skip the rest of the combinations
+			break
 		}
 	}
 
 	// combine the data into data extents
-	var data []byte
+	var d []byte
 	off := offset
 	for i := 0; i < c.dseqnum; i++ {
-		for _, b := range egrp[i] {
+		for _, b := range data[i] {
 			if b != nil {
-				if off + uint64(len(data)) != offset {
+				if off + uint64(len(d)) != offset {
 					// start new extent
-					ds = append(ds, DataExtent{ off, data })
+					ds = append(ds, DataExtent{ off, d })
 					off = offset
-					data = nil
+					d = nil
 				}
 
-				data = append(data, b...)
+				d = append(d, b...)
 			}
 
 			offset += uint64(len(b))
 		}
 	}
 
-	if data != nil {
-		ds = append(ds, DataExtent{ off, data })
+	if d != nil {
+		ds = append(ds, DataExtent{ off, d })
 	}
-	
+
+//	fmt.Printf("ds %v\n", ds)	
 	return
 }

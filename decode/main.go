@@ -25,7 +25,7 @@ func main() {
 	if *dectbl != "" {
 		err := l0.LoadDecodeTable(*dectbl, criteria.H4G2)
 		if err != nil {
-			fmt.Printf("error while loading decoding table:%s: %v\n", err)
+			fmt.Printf("error while loading decoding table:%s: %v\n", *dectbl, err)
 			return
 		}
 	}
@@ -74,7 +74,7 @@ func main() {
 	data := cdc.Decode(0, math.MaxUint64, oligos)
 	of, err := os.Create(flag.Arg(1))
 	if err != nil {
-		fmt.Printf("Error creating the file: %s: %v\n", flag.Arg(1))
+		fmt.Printf("Error creating the file: %s: %v\n", flag.Arg(1), err)
 		return
 	}
 

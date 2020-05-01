@@ -20,7 +20,7 @@ func main() {
 	flag.Parse()
 
 	if *enctbl != "" {
-		err := l0.LoadEncodeTable("../tblgen/encnt17b13.tbl", criteria.H4G2)
+		err := l0.LoadEncodeTable(*enctbl, criteria.H4G2)
 		if err != nil {
 			fmt.Printf("error while loading encoding table:%s: %v\n", err)
 			return

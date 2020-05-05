@@ -174,36 +174,36 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 		// we recovered all the data, return
 		goto done
 	}
-/*
+
 	{
 		n := 0
 		for _, de := range data {
 			n += len(de.Data)
 		}
 
-		fmt.Printf("got %d extents, %d/%d bytes, trying harder...\n", len(data), n, last * uint64(c.c1.DataLen()))
+//		fmt.Printf("got %d extents, %d/%d bytes, trying harder...\n", len(data), n, last * uint64(c.c1.DataLen()))
 	}
-*/
+
 
 	// Now try harder. We processed all good oligos, try to process only the bad ones
 	l, failed = c.decodeOligos(start, end, failed, doligos, eoligos, true)
-//	fmt.Printf("hard: last %d failed %d\n", last, len(failed))
 	if l > last {
 		last = l
 	}
+//	fmt.Printf("hard: last %d failed %d\n", last, len(failed))
 	data = c.recoverData(start, last, doligos, eoligos)
 
 done:
-/*
+
 	{
 		n := 0
 		for _, de := range data {
 			n += len(de.Data)
 		}
 
-		fmt.Printf("got %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
+//		fmt.Printf("got %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
 	}
-*/
+
 	if len(data) != 0 {
 		var dsz uint64
 
@@ -231,10 +231,17 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 	// Decode in parallel
 	procnum := runtime.NumCPU()
 	olperproc := 1 + len(oligos)/procnum
+	if olperproc < 100 {
+		// don't spin goroutines if there are not that many oligos
+		procnum = 1
+		olperproc = len(oligos)
+	}
+
 	ch := make(chan doligo, procnum)
 	for i := 0; i < procnum; i++ {
 		istart := i * olperproc
 		if istart >= len(oligos) {
+			procnum = i
 			break
 		}
 

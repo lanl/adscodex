@@ -3,23 +3,24 @@
 package long
 
 import (
+	"bytes"
 	"acoma/oligo"
 )
 
 type Oligo struct {
-	// Oligo length
-	len	int
-
 	// Sequence of nts
 	// Each nt uses one byte with nt at position 0 stored 
 	// in seq[0], etc.
 	seq	[]byte
+
+	// true if the seq slice is shared among multiple Oligos
+	sharing	bool
 }
 
 // Creates a new long oligo object with the specified length and
 // value of "AAA...AA"
 func New(olen int) *Oligo {
-	return &Oligo {olen, make([]byte, olen) }
+	return &Oligo {make([]byte, olen), false }
 }
 
 // Creates a new short oligo object with the specified length and oligo value
@@ -36,7 +37,7 @@ func FromString(s string) (*Oligo, bool) {
 		seq = append(seq, byte(nt))
 	}
 
-	return &Oligo{len(seq), seq}, true
+	return &Oligo{seq, false}, true
 }
 
 // for when we know that there can't be error
@@ -50,10 +51,15 @@ func FromString1(s string) *Oligo {
 // Returns a new Oligo object and true (because the conversion is alwys possible)
 func Copy(o oligo.Oligo) (*Oligo, bool) {
 	ol := new(Oligo)
-	ol.len = o.Len()
-	ol.seq = make([]byte, ol.len)
-	for i := 0; i < ol.len; i++ {
-		ol.seq[i] = byte(o.At(i))
+	if o1, ok := o.(*Oligo); ok {
+		// o is long Oligo
+		ol.seq = o1.seq
+		ol.sharing = true
+	} else {
+		ol.seq = make([]byte, o.Len())
+		for i := 0; i < len(ol.seq); i++ {
+			ol.seq[i] = byte(o.At(i))
+		}
 	}
 
 	return ol, true
@@ -61,27 +67,40 @@ func Copy(o oligo.Oligo) (*Oligo, bool) {
 
 // Implementation of the Oligo interface...
 func (o *Oligo) Len() int {
-	return o.len
+	return len(o.seq)
 }
 
 func (o *Oligo) String() (ret string) {
-	for i := 0; i < o.len; i++ {
-		ret = ret + oligo.Nt2String(o.At(i))
+	for i := 0; i < len(o.seq); i++ {
+		ret = ret + oligo.Nt2String(int(o.seq[i]))
 	}
 
 	return ret
 }
 
+func (o *Oligo) unshare() {
+	if o.sharing {
+		seq := make([]byte, len(o.seq))
+		copy(seq, o.seq)
+		o.seq = seq
+		o.sharing = false
+	}
+}
+
 func (o *Oligo) Cmp(other oligo.Oligo) int {
 	olen := other.Len()
-	if o.len < olen {
+	if len(o.seq) < olen {
 		return -1
-	} else if o.len > olen {
+	} else if len(o.seq) > olen {
 		return 1
 	}
 
-	for i := 0; i < o.len; i++ {
-		n := o.At(i) - other.At(i)
+	if o1, ok := other.(*Oligo); ok {
+		return bytes.Compare(o.seq, o1.seq)
+	}
+
+	for i := 0; i < olen; i++ {
+		n := int(o.seq[i]) - other.At(i)
 		if n < 0 {
 			return -1
 		} else if n > 0 {
@@ -95,7 +114,8 @@ func (o *Oligo) Cmp(other oligo.Oligo) int {
 func (o *Oligo) Next() bool {
 	var i int
 
-	for i = o.len - 1; i >= 0; i-- {
+	o.unshare()
+	for i = len(o.seq) - 1; i >= 0; i-- {
 		o.seq[i]++
 		if o.seq[i] > 3 {
 			o.seq[i] = 0
@@ -108,42 +128,45 @@ func (o *Oligo) Next() bool {
 }
 
 func (o *Oligo) At(idx int) int {
-	if idx < 0 || idx > o.len {
-		return -1
-	}
+//	if idx < 0 || idx > o.len {
+//		return -1
+//	}
 
 	return int(o.seq[idx])
 }
 
 func (o *Oligo) Slice(start, end int) oligo.Oligo {
 //	fmt.Printf("Slice: %v start %d end %d: %v\n", o, start, end, o.seq)
+	olen := len(o.seq)
 	if end <= 0 {
-		end = o.len - end
+		end = olen - end
 	}
 
-	if end > o.len {
-		end = o.len
+	if end > olen {
+		end = olen
 	} else if end < 0 {
 		end = 0
 	}
 
-	if start < 0 || start > o.len || start > end { 
-		return &Oligo{ 0, nil }
+	if start < 0 || start > olen || start > end { 
+		return &Oligo{ nil, false }
 	}
 
 	no := new(Oligo)
-	no.len = end - start
-	no.seq = make([]byte, no.len)
-	copy(no.seq, o.seq[start:end])
+//	no.seq = make([]byte, no.len)
+//	copy(no.seq, o.seq[start:end])
+	no.seq = o.seq[start:end]
+	no.sharing = true
 
 	return no
 }
 
 func (o *Oligo) Clone() oligo.Oligo {
 	no := new(Oligo)
-	no.len = o.len
-	no.seq = make([]byte, no.len)
-	copy(no.seq, o.seq)
+//	no.seq = make([]byte, no.len)
+//	copy(no.seq, o.seq)
+	no.seq = o.seq
+	no.sharing = true
 
 	return no
 }
@@ -160,11 +183,11 @@ func (o *Oligo) Append(other oligo.Oligo) bool {
 	o.len += other.Len()
 	o.seq = seq
 */
-	o.len += other.Len()
+
+	o.unshare()
 	for i := 0; i < other.Len(); i++ {
 		o.seq = append(o.seq, byte(other.At(i)))
 	}
 
 	return true
 }
-

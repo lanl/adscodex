@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
+	"strings"
 	"acoma/oligo"
 	"acoma/oligo/long"
 	"acoma/l0"
@@ -18,6 +20,7 @@ var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
+var profname = flag.String("prof", "", "profile filename")
 
 func main() {
 	flag.Parse()
@@ -29,6 +32,9 @@ func main() {
 			return
 		}
 	}
+
+	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
+	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
 
 	p5, ok := long.FromString(*p5str)
 	if !ok {
@@ -57,11 +63,13 @@ func main() {
 	var oligos []oligo.Oligo
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		seq := sc.Text()
-		if len(seq) == 0 {
+		ent := sc.Text()
+		if len(ent) == 0 {
 			continue
 		}
 
+		ls := strings.Split(ent, " ")
+		seq := ls[0]
 		o, ok := long.FromString(seq)
 		if !ok {
 			fmt.Printf("invalid sequence: %s\n", seq)
@@ -69,6 +77,21 @@ func main() {
 		}
 
 		oligos = append(oligos, o)
+	}
+
+	if *profname != "" {
+		f, err := os.Create(*profname)
+		if err != nil {
+			fmt.Printf("Error: creating '%s': %v\n", *profname, err)
+			return
+		}
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			fmt.Printf("can't start CPU profile: %v\n", err)
+			return
+		}
+		defer pprof.StopCPUProfile()
 	}
 
 	data := cdc.Decode(0, math.MaxUint64, oligos)

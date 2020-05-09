@@ -26,24 +26,14 @@ var singleNts = []oligo.Oligo {
 	long.FromString1("G"),
 }
 
-func (c *Codec) tryRecover(p5, p3, ol oligo.Oligo, flip bool) (data [][]byte, mdblks []uint64, err error) {
-	prefix := p5.Slice(p5.Len() - 4, p5.Len())
+func (c *Codec) tryRecover(prefix, ol oligo.Oligo, difficulty int) (data [][]byte, mdblks []uint64, err error) {
 	mdblks = make([]uint64, c.blknum)
 	data = make([][]byte, c.blknum)
-	n := c.tryMatch(0, prefix, ol, c.OligoLen(), mdblks, data)	// n is the number of errors to match, <0 if no match
+	n := c.tryMatch(0, prefix, ol, c.OligoLen(), mdblks, data, difficulty)	// n is the number of errors to match, <0 if no match
 	if n < 0 {
 		// couldn't match
 		err = Emetadata
 		return
-	}
-
-	if flip {
-		for i := 0; i < len(data); i++ {
-			d := data[i]
-			for j := 0; j < len(d); j++ {
-				d[j] = ^d[j]
-			}
-		}
 	}
 
 	return
@@ -60,7 +50,7 @@ func (c *Codec) tryRecover(p5, p3, ol oligo.Oligo, flip bool) (data [][]byte, md
 // all possible error combinations that we allow in the data block. It strips the 
 // data block according to the errors and calls tryMd to try errors in the metadata
 // block. Eventually tryMd will call tryMatch with idx+1 to work on the next data block
-func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte) (err int) {
+func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte, difficulty int) (err int) {
 	err = -1
 	data[idx] = nil
 
@@ -80,7 +70,7 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 	}
 
 	// try without errors
-	err = c.tryMd(idx, ol.Slice(13, 17), ol.Slice(17, 0), olen - 17, mdblks, data)
+	err = c.tryMd(idx, ol.Slice(13, 17), ol.Slice(17, 0), olen - 17, mdblks, data, difficulty)
 	if err >= 0 {
 		// we try to decode the data block only if we didn't assume it have errors
 		if ol.Len() < 17 {
@@ -96,11 +86,11 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 		pbit := int(v & 1)
 		v >>= 1
 		if (bits.OnesCount64(v) + pbit) % 2 == 0 {
-			d := make([]byte, 0, 4)
-			d = append(d, byte(v))
-			d = append(d, byte(v >> 8))
-			d = append(d, byte(v >> 16))
-			d = append(d, byte(v >> 24))
+			d := make([]byte, 4)
+			d[0] = byte(v)
+			d[1] = byte(v >> 8)
+			d[2] = byte(v >> 16)
+			d[3] = byte(v >> 24)
 			data[idx] = d
 		}
 
@@ -114,7 +104,7 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 		// TODO: We should calculate the prefix correctly by assuming there are
 		// errors
 		prefix := ol.Slice(13 - derr, 17 - derr)
-		err = c.tryMd(idx, prefix, ol.Slice(17 - derr, 0), olen - 17, mdblks, data)
+		err = c.tryMd(idx, prefix, ol.Slice(17 - derr, 0), olen - 17, mdblks, data, difficulty)
 		if err >= 0 {
 			err += derr
 			break
@@ -124,7 +114,7 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 		// TODO: We should calculate the prefix correctly by assuming there are
 		// errors
 		prefix = ol.Slice(13 + derr, 17 + derr)
-		err = c.tryMd(idx, prefix, ol.Slice(17 + derr, 0), olen - 17, mdblks, data)
+		err = c.tryMd(idx, prefix, ol.Slice(17 + derr, 0), olen - 17, mdblks, data, difficulty)
 		if err >= 0 {
 			err += derr
 			break
@@ -140,7 +130,7 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 // tryMatch to match the next blocks (if we haven't reached the end of the oligo)
 // If we reached the end, we check if the metadata blocks we collected match
 // the RS codes, and return the appropriate value.
-func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte) (err int) {
+func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte, difficulty int) (err int) {
 	// TODO: this works for only single error allowed at the moment
 	// should probably be made more general
 
@@ -154,17 +144,17 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 	}
 
 	// No error
-	err = c.tryIt(idx, prefix, ol.Slice(0, mdsz), ol.Slice(mdsz, 0), olen - mdsz, mdblks, data)
+	err = c.tryIt(idx, prefix, ol.Slice(0, mdsz), ol.Slice(mdsz, 0), olen - mdsz, mdblks, data, difficulty)
 	if err >= 0 {
 		return
 	}
 
-	// FIXME: The code below is not fully tested yet, so it is disabled (false in the ifs)
+	// FIXME: The code below is not fully tested yet
 
 	// One error
 	// Delete
 	// Iterate through all positions, and insert all possible nts
-	if false && ol.Len() + 1 >= mdsz {
+	if difficulty > 2 && ol.Len() + 1 >= mdsz {
 		for p := 0; p < mdsz - 1; p++ {
 			var sol oligo.Oligo
 			if p == 0 {
@@ -179,7 +169,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 				mdol.Append(singleNts[n])
 				mdol.Append(eol)
 
-				err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz - 1, 0), olen - mdsz, mdblks, data)
+				err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz - 1, 0), olen - mdsz, mdblks, data, difficulty)
 				if err >= 0 {
 					err++
 					return
@@ -190,7 +180,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 
 	// Insert
 	// Iterate through all positions and remove one nt
-	if false && ol.Len() > mdsz {
+	if difficulty > 1 && ol.Len() > mdsz {
 		for p := 0; p < mdsz + 1; p++ {
 			var mdol oligo.Oligo
 
@@ -201,7 +191,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 			}
 
 			mdol.Append(ol.Slice(p+1, mdsz + 1))
-			err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz + 1, 0), olen - mdsz, mdblks, data)
+			err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz + 1, 0), olen - mdsz, mdblks, data, difficulty)
 			if err >= 0 {
 				err++
 				return
@@ -211,7 +201,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 
 	// Substitution
 	// Iterate through all positions and replace the nt with the rest of the possible values
-	if false && ol.Len() >= mdsz {
+	if difficulty > 2 && ol.Len() >= mdsz {
 		for p := 0; p < mdsz; p++ {
 			var sol oligo.Oligo
 			if p == 0 {
@@ -230,7 +220,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 				mdol.Append(singleNts[n])
 				mdol.Append(eol)
 
-				err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz, 0), olen - mdsz, mdblks, data)
+				err = c.tryIt(idx, prefix, mdol, ol.Slice(mdsz, 0), olen - mdsz, mdblks, data, difficulty)
 				if err >= 0 {
 					err++
 					return
@@ -243,7 +233,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 	return -1
 }
 
-func (c *Codec) tryIt(idx int, prefix, mdol, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte) (err int) {
+func (c *Codec) tryIt(idx int, prefix, mdol, ol oligo.Oligo, olen int, mdblks []uint64, data [][]byte, difficulty int) (err int) {
 	if idx+1 == c.blknum && olen != 0 {
 		return -1
 	}
@@ -278,7 +268,7 @@ func (c *Codec) tryIt(idx int, prefix, mdol, ol oligo.Oligo, olen int, mdblks []
 			pfx.Append(mdol)
 		}
 
-		err = c.tryMatch(idx + 1, pfx, ol, olen, mdblks, data)
+		err = c.tryMatch(idx + 1, pfx, ol, olen, mdblks, data, difficulty)
 		return
 	}
 

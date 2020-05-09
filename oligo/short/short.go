@@ -88,6 +88,22 @@ func (o *Oligo) String() (ret string) {
 }
 
 func (o *Oligo) Cmp(other oligo.Oligo) int {
+	if o1, ok := other.(*Oligo); ok {
+		if o.len < o1.len {
+			return -1
+		} else if o.len > o1.len {
+			return 1
+		}
+
+		if o.seq < o1.seq {
+			return -1
+		} else if o.seq > o1.seq {
+			return 1
+		}
+
+		return 0
+	}
+
 	olen := other.Len()
 	if o.len < olen {
 		return -1
@@ -120,9 +136,9 @@ func (o *Oligo) Next() bool {
 }
 
 func (o *Oligo) At(idx int) int {
-	if idx < 0 || idx > o.len {
-		return -1
-	}
+//	if idx < 0 || idx > o.len {
+//		return -1
+//	}
 
 	return int((o.seq>>(2*(o.len - idx - 1))) & 0x3)
 }

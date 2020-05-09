@@ -2,7 +2,7 @@ package l2
 
 import (
 	"errors"
-_	"fmt"
+	"fmt"
 	"math/rand"
 	"runtime"
 	"acoma/oligo"
@@ -156,8 +156,7 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 // The oligos array may contain extra oligo sequences that are not used.
 // Return all data that we recovered in data extents
 func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExtent) {
-	var failed []oligo.Oligo
-	var last, l uint64
+	var last uint64
 
 	// maps from oligo addresses to a list of data blocks for that address
 	// The first array of the entry is always dblknum elements long len([][][]byte) == dblknum
@@ -166,42 +165,31 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 	doligos := make(map[uint64] [][][]byte)	// data oligos (list per address)
 	eoligos := make(map[uint64] [][][]byte)	// erasure oligos (list per address)
 
-	// first try without forcing metadata recovery at L1
-	last, failed = c.decodeOligos(start, end, oligos, doligos, eoligos, false)
-//	fmt.Printf("easy: last %d failed %d\n", last, len(failed))
-	data = c.recoverData(start, last, doligos, eoligos)
-	if len(data) == 1 {
-		// we recovered all the data, return
-		goto done
-	}
+	reoligos := oligos
+	for dfclty := 0; dfclty < 2; dfclty++ {
+		l, f := c.decodeOligos(start, end, reoligos, doligos, eoligos, dfclty)
+//		fmt.Printf("difficulty: %d total %d failed %d\n", dfclty, len(reoligos), len(f))
 
-	{
-		n := 0
-		for _, de := range data {
-			n += len(de.Data)
+		reoligos = f
+		if l > last {
+			last = l
 		}
 
-//		fmt.Printf("got %d extents, %d/%d bytes, trying harder...\n", len(data), n, last * uint64(c.c1.DataLen()))
-	}
-
-
-	// Now try harder. We processed all good oligos, try to process only the bad ones
-	l, failed = c.decodeOligos(start, end, failed, doligos, eoligos, true)
-	if l > last {
-		last = l
-	}
-//	fmt.Printf("hard: last %d failed %d\n", last, len(failed))
-	data = c.recoverData(start, last, doligos, eoligos)
-
-done:
-
-	{
-		n := 0
-		for _, de := range data {
-			n += len(de.Data)
+		data = c.recoverData(start, last, doligos, eoligos)
+		if len(data) == 1 {
+			// we recovered all the data, return
+			break
 		}
 
-//		fmt.Printf("got %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
+/*		{
+			n := 0
+			for _, de := range data {
+				n += len(de.Data)
+			}
+
+			fmt.Printf("\tgot %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
+		}
+*/
 	}
 
 	if len(data) != 0 {
@@ -227,7 +215,7 @@ done:
 // appropriate maps, depending if the contain data or erasure codes.
 // If the parameter tryhard is true, tells the L1 codec to try harder to recover
 // the metadata
-func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, eoligos map[uint64][][][]byte, tryhard bool) (last uint64, failed []oligo.Oligo) {
+func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, eoligos map[uint64][][][]byte, difficulty int) (last uint64, failed []oligo.Oligo) {
 	// Decode in parallel
 	procnum := runtime.NumCPU()
 	olperproc := 1 + len(oligos)/procnum
@@ -257,12 +245,8 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 			for _, o := range ols {
 				var err error
 
-//				if n%1000 == 0 && n != 0 {
-//					fmt.Printf(".")
-//				}
-
 				do.failed = nil
-				do.addr, do.ef, do.data, err = c.c1.Decode(c.p5, c.p3, o, tryhard)
+				do.addr, do.ef, do.data, err = c.c1.Decode(c.p5, c.p3, o, difficulty)
 				if err != nil {
 					if err == l1.Eprimer {
 						// one of the primers didn't match, just discard the oligo
@@ -276,7 +260,7 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 
 						do.failed = o
 					} else {
-						panic("unknown error")
+						panic(fmt.Sprintf("unknown error: %v", err))
 					}
 				}
 

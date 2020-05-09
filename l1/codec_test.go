@@ -36,6 +36,9 @@ func initTest(t *testing.T) {
 		t.Fatalf("error while loading decoding table: %v\n", err)
 	}
 
+//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
+//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
+
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCA")
 	p3, _ = long.FromString("ATCAGTGAGCTGGCAACTTCCA")
 
@@ -70,7 +73,7 @@ func TestEncode(t *testing.T) {
 		}
 
 		tt = time.Now()
-		daddr, dec, dblks, err := cdc.Decode(p5, p3, ol, false)
+		daddr, dec, dblks, err := cdc.Decode(p5, p3, ol, 0)
 		dt := time.Since(tt)
 		if err != nil {
 			t.Fatalf("error while decoding: %v\n", err)
@@ -117,7 +120,7 @@ func TestRecover(t *testing.T) {
 
 	// one insert in the first data block
 	ol, _ := long.FromString("CGACATCTCGATGGCAGCATGGAGCTCAAACTCATGTTACGTCCTTTTGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err := cdc.Decode(p5, p3, ol, true)
+	daddr, dec, _, err := cdc.Decode(p5, p3, ol, 1)
 	if err != nil {
 		t.Fatalf("Error while recovering %v: %v\n", ol, err)
 	} else if daddr != 28 || !dec {
@@ -128,7 +131,7 @@ func TestRecover(t *testing.T) {
 
 	// one delete in the first data block
 	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAACTCATGTTACGTCCTTTTGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, true)
+	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
 	if err != nil {
 		t.Fatalf("Error while recovering %v: %v\n", ol, err)
 	} else if daddr != 28 || !dec {
@@ -138,7 +141,7 @@ func TestRecover(t *testing.T) {
 
 	// one insert in the second data block
 	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAAACTCATGTTACGTCCTTTTGGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, true)
+	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
 	if err != nil {
 		t.Fatalf("Error while recovering %v: %v\n", ol, err)
 	} else if daddr != 28 || !dec {
@@ -148,7 +151,7 @@ func TestRecover(t *testing.T) {
 
 	// one delete in the second data block
 	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAAACTCATGTTACGTCCTTTTGAGTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, true)
+	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
 	if err != nil {
 		t.Fatalf("Error while recovering %v: %v\n", ol, err)
 	} else if daddr != 28 || !dec {

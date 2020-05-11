@@ -477,9 +477,11 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 		for !done {
 			// collect the current combination
 //			fmt.Printf("%d idx %v\n", offset, idx)
+			nshards := 0
 			for i, m := range idx {
 				if len(dblks[i]) > m {
 					shards[i] = dblks[i][m]
+					nshards++
 				} else {
 					shards[i] = nil
 				}
@@ -512,14 +514,42 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 
 //			fmt.Printf("%d >>> shard %d: %v err %v\n", offset, n, shards, err)
 			if err != nil {
-//				fmt.Printf("reconstructing data failed error %v\n", err)
-				// reconstruction failed
-				// TODO: if we have enough a lot of data
-				// we can try setting random shards to nil and
-				// trying to reconstruct without them
+				// The reconstruction failed, but if we had too many non-nil blocks
+				// we can try removing some of them and retrying.
+				if nshards < c.dseqnum {
+					// if we have too few non-nil shards, there is no point of even trying
+					continue
+				}
+
+				// Keep it simple for now, remove only one shard and retry
+				// TODO: eventually make it reflect the number of erasure shards
+				for i := 0; i < len(shards); i++ {
+					tshard := shards[i]
+					shards[i] = nil
+
+					err := c.ec.Reconstruct(shards)
+					if err == nil {
+						var ok bool
+
+						ok, err = c.ec.Verify(shards)
+						if err == nil && !ok {
+							err = Eec
+						}
+					}
+
+					if err == nil {
+						// we found a combination that works
+						goto done
+					}
+
+					shards[i] = tshard
+				}
+
+				// we failed
 				continue
 			}
 
+done:
 			// move the reconstructed data into an array to recombine
 			// into extents later
 			for i := 0; i < c.dseqnum; i++ {

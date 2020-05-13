@@ -26,8 +26,9 @@ type Codec struct {
 // Data extent
 // Describes a sequential range of data recovered
 type DataExtent struct {
-	Offset	uint64
-	Data	[]byte
+	Offset		uint64
+	Data		[]byte
+	Verified	bool		// true if the data in the extent is verified
 }
 
 type doligo struct {
@@ -167,29 +168,41 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 
 	reoligos := oligos
 	for dfclty := 0; dfclty < 2; dfclty++ {
-		l, f := c.decodeOligos(start, end, reoligos, doligos, eoligos, dfclty)
-//		fmt.Printf("difficulty: %d total %d failed %d\n", dfclty, len(reoligos), len(f))
-
-		reoligos = f
+		l, failed := c.decodeOligos(start, end, reoligos, doligos, eoligos, dfclty)
 		if l > last {
 			last = l
 		}
 
 		data = c.recoverData(start, last, doligos, eoligos)
+
+/*		{
+			var offset uint64
+			var vnum, uvnum, hnum uint64
+
+			fmt.Printf("difficulty: %d total %d failed %d\n", dfclty, len(reoligos), len(failed))
+			for _, de := range data {
+				if de.Offset > offset {
+					hnum += de.Offset - offset
+				}
+
+				if de.Verified {
+					vnum += uint64(len(de.Data))
+				} else {
+					uvnum += uint64(len(de.Data))
+				}
+
+				offset = de.Offset + uint64(len(de.Data))
+			}
+
+			fmt.Printf("\tgot %d extents, %d bytes verified, %d bytes unverified, %d bytes holes, total %d\n", len(data), vnum, uvnum, hnum, vnum + uvnum + hnum)
+		}
+*/
 		if len(data) == 1 {
 			// we recovered all the data, return
 			break
 		}
 
-/*		{
-			n := 0
-			for _, de := range data {
-				n += len(de.Data)
-			}
-
-			fmt.Printf("\tgot %d extents, %d/%d bytes\n", len(data), n, last * uint64(c.c1.DataLen()))
-		}
-*/
+		reoligos = failed
 	}
 
 	if len(data) != 0 {
@@ -376,7 +389,7 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][
 		// check if the first extent can be combined with the last one so far
 		if data != nil && ds != nil {
 			last := &data[len(data) - 1]
-			if last.Offset + uint64(len(last.Data)) == ds[0].Offset {
+			if last.Offset + uint64(len(last.Data)) == ds[0].Offset && last.Verified == ds[0].Verified {
 				last.Data = append(last.Data, ds[0].Data...)
 				ds = ds[1:]
 			}
@@ -450,6 +463,7 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 	idx := make([]int, c.dseqnum + c.rseqnum)		// indices for each member of the group (if there are multiple data blocks per member)
 	dblks := make([][][]byte, c.dseqnum + c.rseqnum)
 	data := make([][][]byte, c.dseqnum)			// reconstructed data blocks for each position in the erasure group
+	dverified := make([]bool, c.dblknum)			// true if the data is checked by erasure shards
 
 	for i := 0; i < len(data); i++ {
 		data[i] = make([][]byte, c.dblknum)
@@ -477,11 +491,15 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 		for !done {
 			// collect the current combination
 //			fmt.Printf("%d idx %v\n", offset, idx)
-			nshards := 0
+			nshards := 0	// non-nil shards
+			nec := 0	// non-nil erasure blocks
 			for i, m := range idx {
 				if len(dblks[i]) > m {
 					shards[i] = dblks[i][m]
 					nshards++
+					if i > c.dseqnum {
+						nec++
+					}
 				} else {
 					shards[i] = nil
 				}
@@ -501,8 +519,24 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 				}
 			}
 
+			var err error
+			if nec == 0 {
+				// We don't have any erasure shards, so we can't check if the 
+				// data shards contain errors. Still, if we have all the data 
+				// shards, return them flagging that they might be wrong
+				if nshards == c.dseqnum {
+					// copy the data into the data array, but don't set 
+					// echecked[n] to true
+					goto copydata
+				}
+
+				// otherwise, skip the rest of the code for this combination
+				// we won't have any luck anyway
+				continue
+			}
+
 //			fmt.Printf("%d <<< shard %d: %v\n", offset, n, shards)
-			err := c.ec.Reconstruct(shards)
+			err = c.ec.Reconstruct(shards)
 			if err == nil {
 				var ok bool
 
@@ -516,17 +550,15 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 			if err != nil {
 				// The reconstruction failed, but if we had too many non-nil blocks
 				// we can try removing some of them and retrying.
-				if nshards < c.dseqnum {
-					// if we have too few non-nil shards, there is no point of even trying
-					continue
-				}
-
 				// Keep it simple for now, remove only one shard and retry
 				// TODO: eventually make it reflect the number of erasure shards
 				for i := 0; i < len(shards); i++ {
 					tshard := shards[i]
-					shards[i] = nil
+					if tshard == nil {
+						continue
+					}
 
+					shards[i] = nil
 					err := c.ec.Reconstruct(shards)
 					if err == nil {
 						var ok bool
@@ -539,7 +571,8 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 
 					if err == nil {
 						// we found a combination that works
-						goto done
+						dverified[n] = i < c.dseqnum || nec > 1
+						goto copydata
 					}
 
 					shards[i] = tshard
@@ -547,9 +580,11 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 
 				// we failed
 				continue
+			} else {
+				dverified[n] = true
 			}
 
-done:
+copydata:
 			// move the reconstructed data into an array to recombine
 			// into extents later
 			for i := 0; i < c.dseqnum; i++ {
@@ -561,33 +596,37 @@ done:
 				data[i][p] = shards[i]
 			}
 
-			// since we found a match, skip the rest of the combinations
-			break
+			if dverified[n] {
+				// since we found a match, skip the rest of the combinations
+				break
+			}
 		}
 	}
 
 	// combine the data into data extents
 	var d []byte
 	off := offset
+	verified := false
 	for i := 0; i < c.dseqnum; i++ {
-		for _, b := range data[i] {
+		for j, b := range data[i] {
 			if b != nil {
-				if off + uint64(len(d)) != offset {
+				if len(d) != 0 && (verified != dverified[j] || off + uint64(len(d)) != offset) {
 					// start new extent
-					ds = append(ds, DataExtent{ off, d })
+					ds = append(ds, DataExtent{ off, d, verified })
 					off = offset
 					d = nil
 				}
 
 				d = append(d, b...)
+				verified = dverified[j]
 			}
 
-			offset += uint64(len(b))
+			offset += 4
 		}
 	}
 
 	if d != nil {
-		ds = append(ds, DataExtent{ off, d })
+		ds = append(ds, DataExtent{ off, d, verified })
 	}
 
 //	fmt.Printf("ds %v\n", ds)	

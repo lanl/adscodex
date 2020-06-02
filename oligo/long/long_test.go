@@ -192,4 +192,15 @@ func TestDist(t *testing.T) {
 	if d != 2 {
 		t.Fatalf("Distance %v:%v should be 2 instead of %d", o1, o2, d)
 	}
+
+	o1, _ = FromString("CGACATCTCGATGGCAGCATATGCAGACTAGATCAACAAAATTAGACCAGCTAACTCGAGCTTATCAGTTTGTACTTATTTTGAAATGTACAGCGTAGGAATGATTATACGACAAGTACATAAAGCCCAGTGAGCTGGCAACTTCCA")
+	o2, _ = FromString("CGACATCTCGATGGCAGCATATGCAGACTAGATCAACAAAATTAGACCAGCTAACTCGAGCTTATCAGTTTGTACTTATTTTGAAATGTACAGCGTAGGAATGATTATACGACAAGTACATAAAGTCCAGTGAGCTGGCAACTTCCA")
+	dist, diff := oligo.Diff(o1, o2)
+	if dist != 1 {
+		t.Fatalf("Distance %v:%v should be 1 instead of %d", o1, o2, d)
+	}
+
+	if diff != "-----------------------------------------------------------------------------------------------------------------------------R---------------------" {
+		t.Fatalf("Diff %v:%v should be '-----------------------------------------------------------------------------------------------------------------------------R---------------------' instead of %v", o1, o2, diff)
+	}
 }

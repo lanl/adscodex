@@ -204,6 +204,75 @@ func HasSuffix(seq, suffix Oligo, maxdist int) bool {
 	return false
 }
 
+func Diff(from, to Oligo) (int, string) {
+	m := from.Len()
+	n := to.Len()
+
+	v := make([][]int, m + 1)
+	b := make([][]string, m + 1)
+	b[0] = make([]string, n + 1)
+	v[0] = make([]int, n + 1)
+	for i:=0; i < n+1; i++ {
+		v[0][i] = i
+		b[0][i] = "I"
+	}
+
+	for i:= 0; i < m; i++ {
+		v[i+1] = make([]int, n + 1)
+		b[i+1] = make([]string, n + 1)
+		v[i+1][0] = i + 1
+		b[i+1][0] = "D"
+		for j := 0; j < n; j++ {
+			deletionCost := v[i][j+1] + 1
+			insertionCost := v[i+1][j] + 1
+			substitutionCost := v[i][j]
+			b[i+1][j+1] = "R"
+			if from.At(i) != to.At(j) {
+				substitutionCost++
+			}
+
+			mincost := substitutionCost
+			if mincost > insertionCost {
+				mincost = insertionCost
+				b[i+1][j+1] = "I"
+			}
+			if mincost > deletionCost {
+				mincost = deletionCost
+				b[i+1][j+1] = "D"
+			}
+
+			v[i+1][j+1] = mincost
+				
+		}
+
+	}
+
+	// now backtrack to get the actions
+	diff := ""
+	for i, j := m, n; i > 0 || j > 0; {
+		switch b[i][j] {
+		case "D":
+			diff = "D" + diff
+			i--
+
+		case "R":
+			if i>0 && j>0 && v[i-1][j-1] != v[i][j] {
+				diff = "R" + diff
+			} else {
+				diff = "-" + diff
+			}
+			i--
+			j--
+
+		case "I":
+			diff = "I" + diff
+			j--
+		}
+	}
+
+	return v[m][n], diff
+}
+
 func min(a, b int) int {
          if a <= b {
                  return a

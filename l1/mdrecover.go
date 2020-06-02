@@ -85,7 +85,15 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 
 		pbit := int(v & 1)
 		v >>= 1
-		if (bits.OnesCount64(v) + pbit) % 2 == 0 {
+
+		var parityok bool
+		if PARITY_BUG {
+			parityok = (v + uint64(pbit)) % 2  == 0
+		} else {
+			parityok = (bits.OnesCount64(v) + pbit) % 2 == 0
+		}
+
+		if parityok {
 			d := make([]byte, 4)
 			d[0] = byte(v)
 			d[1] = byte(v >> 8)
@@ -180,7 +188,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 
 	// Insert
 	// Iterate through all positions and remove one nt
-	if difficulty > 1 && ol.Len() > mdsz {
+	if difficulty > 2 && ol.Len() > mdsz {
 		for p := 0; p < mdsz + 1; p++ {
 			var mdol oligo.Oligo
 

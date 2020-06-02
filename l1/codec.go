@@ -13,6 +13,7 @@ _	"fmt"
 
 const (
 	PrimerErrors = 3	// how many errors still match the primer
+	PARITY_BUG = false
 )
 
 // Level 1 codec
@@ -171,10 +172,13 @@ func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data [][
                         (uint64(buf[3]) << 24)
 
 		// calculate parity
-		v <<= 1
-		if bits.OnesCount64(v)%2 != 0 {
-			v += 1
+		var parity uint64
+		if PARITY_BUG {
+			parity = v % 2
+		} else {
+			parity = uint64(bits.OnesCount64(v)) % 2
 		}
+		v = (v<<1) + parity
 
 		// append the data block
 		prefix := o.Slice(o.Len() - 4, o.Len())
@@ -346,6 +350,7 @@ func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 			var v uint64
 			var d []byte
 			var pbit int
+			var parityok bool
 
 			dol := ol.Slice(dpos, dpos + 17)
 			if dol.Len() != 17 {
@@ -359,7 +364,14 @@ func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 
 			pbit = int(v & 1)
 			v >>= 1
-			if (bits.OnesCount64(v) + pbit) % 2 == 0 {
+
+			if PARITY_BUG {
+				parityok = (v + uint64(pbit)) % 2  == 0
+			} else {
+				parityok = (bits.OnesCount64(v) + pbit) % 2 == 0
+			}
+
+			if parityok {
 				d = make([]byte, 4)
 				d[0] = byte(v)
 				d[1] = byte(v >> 8)

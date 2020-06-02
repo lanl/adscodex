@@ -35,7 +35,8 @@ type doligo struct {
 	addr	uint64
 	ef	bool
 	data	[][]byte	// if nil (and failed is also nil), end of goroutine
-	failed	oligo.Oligo	// we couldn't decode it
+	failed	bool
+	oligo	oligo.Oligo	// we couldn't decode it
 }
 
 var Eec = errors.New("parity blocks don't match")
@@ -174,12 +175,12 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 		}
 
 		data = c.recoverData(start, last, doligos, eoligos)
-
-/*		{
+/*
+		{
 			var offset uint64
 			var vnum, uvnum, hnum uint64
 
-			fmt.Printf("difficulty: %d total %d failed %d\n", dfclty, len(reoligos), len(failed))
+			fmt.Printf("difficulty: %d total %d failed %d last %d\n", dfclty, len(reoligos), len(failed), last)
 			for _, de := range data {
 				if de.Offset > offset {
 					hnum += de.Offset - offset
@@ -258,7 +259,8 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 			for _, o := range ols {
 				var err error
 
-				do.failed = nil
+				do.failed = false
+				do.oligo = o
 				do.addr, do.ef, do.data, err = c.c1.Decode(c.p5, c.p3, o, difficulty)
 				if err != nil {
 					if err == l1.Eprimer {
@@ -271,7 +273,7 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 						// erasure oligos, if that fails, we'll have to try harder
 						// to recover the metadata and try again
 
-						do.failed = o
+						do.failed = true
 					} else {
 						panic(fmt.Sprintf("unknown error: %v", err))
 					}
@@ -285,20 +287,20 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 			}
 
 			do.data = nil
-			do.failed = nil
+			do.oligo = nil
 			ch <- do
 		} (istart, iend, oligos)
 	}
 
 	for doneprocs := 0; doneprocs < procnum; {
 		do := <- ch
-		if do.data == nil && do.failed == nil {
+		if do.data == nil && do.oligo == nil {
 			doneprocs++
 			continue
 		}
 
-		if do.failed != nil {
-			failed = append(failed, do.failed)
+		if do.failed {
+			failed = append(failed, do.oligo)
 			continue
 		}
 
@@ -327,15 +329,20 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 				continue
 			}
 
-			add := dd[i] == nil
+			add := true
 			ddi := dd[i]
-			for j := 0; !add && j < len(ddi); j++ {
+			for j := 0; add && j < len(ddi); j++ {
 				ddj := ddi[j]
+				same := true
 				for n := 0; n < len(ddj); n++ {
 					if ddj[n] != di[n] {
-						add = true
+						same = false
 						break
 					}
+				}
+
+				if same {
+					add = false
 				}
 			}
 
@@ -385,7 +392,10 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][
 		}
 
 		ds := c.recoverECGroup(a * uint64(c.c1.DataLen()), egrp)
-
+//		if len(ds) != 1 || !ds[0].Verified {
+//			ds = c.recoverECGroup(a * uint64(c.c1.DataLen()), egrp, true)
+//		}
+			
 		// check if the first extent can be combined with the last one so far
 		if data != nil && ds != nil {
 			last := &data[len(data) - 1]
@@ -469,8 +479,11 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 		data[i] = make([][]byte, c.dblknum)
 	}
 
-//	for i, m := range egrp {
-//		fmt.Printf("%d: %v\n", i, m)
+//	if debug {
+//		fmt.Printf("recoverECGroup %d\n", offset)
+//		for i, m := range egrp {
+//			fmt.Printf("\t%d: %v\n", i, m)
+//		}
 //	}
 
 	// each data block within the oligo is processed separately
@@ -497,7 +510,7 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 				if len(dblks[i]) > m {
 					shards[i] = dblks[i][m]
 					nshards++
-					if i > c.dseqnum {
+					if i >= c.dseqnum {
 						nec++
 					}
 				} else {
@@ -512,6 +525,8 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 				if idx[i] < len(dblks[i]) {
 					break
 				} else {
+					idx[i] = 0
+
 					// check if we exhausted all combinations
 					if i+1 == len(idx) {
 						done = true
@@ -520,6 +535,11 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 			}
 
 			var err error
+//			if debug {
+//				fmt.Printf("\tnshards %d nec %d\n", nshards, nec)
+//				fmt.Printf("\t\t%v\n", shards)
+//			}
+
 			if nec == 0 {
 				// We don't have any erasure shards, so we can't check if the 
 				// data shards contain errors. Still, if we have all the data 
@@ -546,9 +566,13 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 				}
 			}
 
+//			if debug {
+//				fmt.Printf("\t\terror %v\n", err)
+//			}
+
 //			fmt.Printf("%d >>> shard %d: %v err %v\n", offset, n, shards, err)
 			if err != nil {
-				// The reconstruction failed, but if we had too many non-nil blocks
+				// The reconstruction failed, but if we had too many non-nil shards
 				// we can try removing some of them and retrying.
 				// Keep it simple for now, remove only one shard and retry
 				// TODO: eventually make it reflect the number of erasure shards
@@ -629,6 +653,8 @@ copydata:
 		ds = append(ds, DataExtent{ off, d, verified })
 	}
 
-//	fmt.Printf("ds %v\n", ds)	
+//	if debug {
+//		fmt.Printf("\tds %v\n", ds)
+//	}
 	return
 }

@@ -1,18 +1,19 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"math"
 	"os"
 	"runtime/pprof"
-	"strings"
 	"acoma/oligo"
 	"acoma/oligo/long"
 	"acoma/l0"
+	"acoma/l1"
 	"acoma/l2"
 	"acoma/criteria"
+	"acoma/io/csv"
+	"acoma/io/fastq"
 )
 
 var dectbl = flag.String("dtbl", "../tbl/decnt17b7.tbl", "decoding lookup table")
@@ -21,6 +22,9 @@ var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var profname = flag.String("prof", "", "profile filename")
+var ftype = flag.String("ftype", "csv", "input file type")
+var mdcsum = flag.String("mdcsum", "rs", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
+var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 
 func main() {
 	flag.Parse()
@@ -53,32 +57,61 @@ func main() {
 		fmt.Printf("Expecting file name\n");
 		return
 	}
-	f, err := os.Open(flag.Arg(0))
-	if err != nil {
-		fmt.Printf("Error opening the file: %v\n", err)
+
+	var mc, dc int
+	switch  *mdcsum {
+	default:
+		fmt.Printf("Invalid metadata checksum type\n")
+		return
+
+	case "rs":
+		mc = l1.CSumRS
+
+	case "crc":
+		mc = l1.CSumCRC
+	}
+
+	if err := cdc.SetMetadataChecksum(mc); err != nil {
+		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	defer f.Close()
 
-	var oligos []oligo.Oligo
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		ent := sc.Text()
-		if len(ent) == 0 {
-			continue
-		}
+	switch  *dtcsum {
+	default:
+		fmt.Printf("Invalid data checksum type: %s\n", *dtcsum)
+		return
 
-		ls := strings.Split(ent, " ")
-		seq := ls[0]
-		o, ok := long.FromString(seq)
-		if !ok {
-			fmt.Printf("invalid sequence: %s\n", seq)
-			return
-		}
+	case "parity":
+		dc = l1.CSumParity
 
-		oligos = append(oligos, o)
+	case "even":
+		dc = l1.CSumEven
 	}
 
+	if err := cdc.SetDataChecksum(dc); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	var oligos []oligo.Oligo
+	var err error
+
+	switch (*ftype) {
+	default:
+		err = fmt.Errorf("Unsupported input type: %s\n", *ftype)
+
+	case "csv":
+		oligos, err = csv.Read(flag.Arg(0), true)
+
+	case "fastq":
+		oligos, err = fastq.Read(flag.Arg(0), true)
+	}
+
+	if err != nil {
+		fmt.Printf("Can't  parse input: %v\n", err)
+	}
+
+	fmt.Printf("%d oligos\n", len(oligos))
 	if *profname != "" {
 		f, err := os.Create(*profname)
 		if err != nil {

@@ -143,6 +143,12 @@ func (o *Oligo) At(idx int) int {
 	return int((o.seq>>(2*(o.len - idx - 1))) & 0x3)
 }
 
+func (o *Oligo) Set(idx int, nt int) {
+	pos := 2*(o.len - idx - 1)
+	o.seq &= ^(0x3 << pos)
+	o.seq |= uint64((nt & 0x3)) << pos
+}
+
 func (o *Oligo) Slice(start, end int) oligo.Oligo {
 	if end <= 0 {
 		end = o.len - end

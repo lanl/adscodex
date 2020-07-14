@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
+	"crypto/sha1"
+	"hash/crc32"
 	"acoma/oligo"
 	"acoma/criteria"
 	"acoma/l0"
@@ -47,10 +49,13 @@ var Eec = errors.New("parity blocks don't match")
 //	p3	3'-end primer
 //	dblknum	number of data blocks in an oligo
 //	mdsz	size of a metadata block in an oligo
-//	mdrsnum	number of Reed-Solomon metadata erasure blocks
+//	mdcsum	number of metadata blocks for checksum
 //	dseqnum	number of data oligos in the erasure block
 //	rseqnum	number of erasure oligos in the erasure block
-func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdrsnum, dseqnum, rseqnum int) *Codec {
+//
+// Additional SetMetadataChecksum and SetDataChecksum functions
+// can be called to change the behavior of the L1 codec
+func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdcsum, dseqnum, rseqnum int) *Codec {
 	var err error
 
 	c := new(Codec)
@@ -59,14 +64,25 @@ func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdrsnum, dseqnum, rseqnum int) 
 	c.dblknum = dblknum
 	c.dseqnum = dseqnum
 	c.rseqnum = rseqnum
-	c.c1 = l1.NewCodec(dblknum, mdsz, mdrsnum, criteria.H4G2)
+	c.c1 = l1.NewCodec(dblknum, mdsz, mdcsum, criteria.H4G2)
 	c.ec, err = reedsolomon.New(dseqnum, rseqnum)
 
 	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 		panic("reedsolomon error")
 	}
 
 	return c
+}
+
+// See the description of the appropriate function in the L1 code
+func (c *Codec) SetMetadataChecksum(cs int) error {
+	return c.c1.SetMetadataChecksum(cs)
+}
+
+// See the description of the appropriate function in the L1 code
+func (c *Codec) SetDataChecksum(cs int) error {
+	return c.c1.SetMetadataChecksum(cs)
 }
 
 // Encodes logical data into a collection of oligos.
@@ -81,18 +97,18 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 	blknum := c.c1.BlockNum()
 	blksz := c.c1.BlockSize()
 
-	// first pad the data at the back so it's multiple of the data per erasure group
-	// (the length of the data is encoded in the last 8 bytes
-	dsz := uint64(len(data))
+	// first add the superblocks
+	data = c.addSupers(data)
+
+	// then pad the data at the back so it's multiple of the data per erasure group
 	oligosz := blknum * blksz
 	egsz := oligosz * c.dseqnum
-	if (len(data) + 8)%egsz != 0 {
-		n := egsz - ((len(data) + 8) % egsz)
+	if len(data)%egsz != 0 {
+		n := egsz - (len(data) % egsz)
 		for i := 0; i < n; i++ {
 			data = append(data, byte(rand.Int31n(256)))
 		}
 	}
-	data = l0.Pint64(dsz, data)
 
 	// first index is the place in the erasure group
 	// second index is the data block within the oligo
@@ -154,6 +170,37 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 	return
 }
 
+func (c *Codec) addSupers(data []byte) (nd []byte) {
+	datasz := uint64(len(data))
+
+	// start with the superblock
+	nd = l0.Pint64(datasz, nil)			// "file" size
+	s := sha1.Sum(data)
+	nd = append(nd, s[:]...)			// SHA1 sum for the whole "file"
+	nd = l0.Pint32(crc32.ChecksumIEEE(nd), nd)	// CRC32 of the superblock
+
+	for len(data) > 0 {
+		sz := 512*1024	// 512K
+		if sz > len(data) {
+			sz = len(data)
+		}
+
+		// append the actual data
+		nd = append(nd, data[0:sz]...)
+
+		// append the intermediate superblock
+		p := len(nd)
+		nd = l0.Pint64(datasz, nd)			// "file" size
+		s = sha1.Sum(data[0:sz])
+		nd = append(nd, s[:]...)			// SHA1 sum for the data chunk
+		nd = l0.Pint32(crc32.ChecksumIEEE(nd[p:]), nd)	// CRC32 of the superblock
+
+		data = data[sz:]
+	}
+
+	return
+}
+
 // Decodes oligos with addresses from start to end.
 // The oligos array may contain extra oligo sequences that are not used.
 // Return all data that we recovered in data extents
@@ -175,7 +222,7 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 		}
 
 		data = c.recoverData(start, last, doligos, eoligos)
-/*
+
 		{
 			var offset uint64
 			var vnum, uvnum, hnum uint64
@@ -183,12 +230,16 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 			fmt.Printf("difficulty: %d total %d failed %d last %d\n", dfclty, len(reoligos), len(failed), last)
 			for _, de := range data {
 				if de.Offset > offset {
+//					c.printECGroup(offset, de.Offset)
+//					fmt.Printf("hole %07d %07d\n", offset, de.Offset)
 					hnum += de.Offset - offset
 				}
 
 				if de.Verified {
 					vnum += uint64(len(de.Data))
 				} else {
+//					fmt.Printf("unverified %07d %07d\n", de.Offset, de.Offset + uint64(len(de.Data)))
+//					c.printECGroup(de.Offset, de.Offset + uint64(len(de.Data)))
 					uvnum += uint64(len(de.Data))
 				}
 
@@ -197,7 +248,7 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 
 			fmt.Printf("\tgot %d extents, %d bytes verified, %d bytes unverified, %d bytes holes, total %d\n", len(data), vnum, uvnum, hnum, vnum + uvnum + hnum)
 		}
-*/
+
 		if len(data) == 1 {
 			// we recovered all the data, return
 			break
@@ -390,11 +441,7 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][
 				}
 			}
 		}
-
 		ds := c.recoverECGroup(a * uint64(c.c1.DataLen()), egrp)
-//		if len(ds) != 1 || !ds[0].Verified {
-//			ds = c.recoverECGroup(a * uint64(c.c1.DataLen()), egrp, true)
-//		}
 			
 		// check if the first extent can be combined with the last one so far
 		if data != nil && ds != nil {
@@ -474,6 +521,7 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 	dblks := make([][][]byte, c.dseqnum + c.rseqnum)
 	data := make([][][]byte, c.dseqnum)			// reconstructed data blocks for each position in the erasure group
 	dverified := make([]bool, c.dblknum)			// true if the data is checked by erasure shards
+	savedshards := make([][]byte, c.dseqnum + c.rseqnum)	// for debugging
 
 	for i := 0; i < len(data); i++ {
 		data[i] = make([][]byte, c.dblknum)
@@ -500,8 +548,11 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 		}
 
 		// go over all combinations of data blocks
-		var done bool
+		dvalid := 0
+		done := false
 		for !done {
+			verified := false
+
 			// collect the current combination
 //			fmt.Printf("%d idx %v\n", offset, idx)
 			nshards := 0	// non-nil shards
@@ -576,6 +627,7 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 				// we can try removing some of them and retrying.
 				// Keep it simple for now, remove only one shard and retry
 				// TODO: eventually make it reflect the number of erasure shards
+/*
 				for i := 0; i < len(shards); i++ {
 					tshard := shards[i]
 					if tshard == nil {
@@ -601,28 +653,49 @@ func (c *Codec) recoverECGroup(offset uint64, egrp [][][][]byte) (ds []DataExten
 
 					shards[i] = tshard
 				}
+*/
 
 				// we failed
 				continue
 			} else {
-				dverified[n] = true
+				verified = true
+//				dverified[n] = true
 			}
 
 copydata:
-			// move the reconstructed data into an array to recombine
-			// into extents later
-			for i := 0; i < c.dseqnum; i++ {
-				p := (n + i) % c.dblknum
-				if p >= c.dblknum {
-					p = 0
-				}
+			docopy := false
+			if verified {
+				if dvalid < nshards {
+					if dvalid != 0 {
+						fmt.Printf("offset %d: had %d shards, got better %d\n", offset, dvalid, nshards)
+						fmt.Printf("\told shards %v\n", savedshards)
+						fmt.Printf("\tnew shards %v\n", shards)
+					}
 
-				data[i][p] = shards[i]
+					docopy = true
+					dverified[n] = true
+					dvalid = nshards
+					copy(savedshards, shards)
+				} else {
+					fmt.Printf("offset %d: had %d shards, got same or worst %d\n", offset, dvalid, nshards)
+					fmt.Printf("\told shards %v\n", savedshards)
+					fmt.Printf("\tnew shards %v\n", shards)
+				}
+			} else {
+				docopy = dvalid == 0
 			}
 
-			if dverified[n] {
-				// since we found a match, skip the rest of the combinations
-				break
+			if docopy {
+				// move the reconstructed data into an array to recombine
+				// into extents later
+				for i := 0; i < c.dseqnum; i++ {
+					p := (n + i) % c.dblknum
+					if p >= c.dblknum {
+						p = 0
+					}
+
+					data[i][p] = shards[i]
+				}
 			}
 		}
 	}
@@ -657,4 +730,24 @@ copydata:
 //		fmt.Printf("\tds %v\n", ds)
 //	}
 	return
+}
+
+func (c *Codec) printECGroup(start, end uint64) {
+	odlen := uint64(c.dblknum * 4)
+
+	s := start / odlen
+	e := end / odlen
+	if end%odlen != 0 {
+		e++
+	}
+
+	fmt.Printf("*** %d %d\n", start, end)
+	s = s - (s % uint64(c.dseqnum))
+	for s < e {
+		fmt.Printf("---\n")
+		for i := 0; i < c.dseqnum; i++ {
+			fmt.Printf("%07d\n", s)
+			s++
+		}
+	}
 }

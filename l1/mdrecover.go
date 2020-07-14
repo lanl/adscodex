@@ -1,7 +1,6 @@
 package l1
 
 import (
-	"math/bits"
 _	"fmt"
 	"acoma/oligo"
 	"acoma/oligo/long"
@@ -83,22 +82,8 @@ func (c *Codec) tryMatch(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uin
 			return
 		}
 
-		pbit := int(v & 1)
-		v >>= 1
-
-		var parityok bool
-		if PARITY_BUG {
-			parityok = (v + uint64(pbit)) % 2  == 0
-		} else {
-			parityok = (bits.OnesCount64(v) + pbit) % 2 == 0
-		}
-
-		if parityok {
-			d := make([]byte, 4)
-			d[0] = byte(v)
-			d[1] = byte(v >> 8)
-			d[2] = byte(v >> 16)
-			d[3] = byte(v >> 24)
+		ok, d := c.checkDataBlock(v)
+		if ok {
 			data[idx] = d
 		}
 
@@ -144,7 +129,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 
 	mdsz := c.mdsz
 	if idx >= c.blknum - c.rsnum {
-		mdsz = 5	// RS erasure blocks are always 5 nts
+		mdsz = c.mdcsumLen()
 	}
 
 	if ol.Len() < mdsz {
@@ -188,7 +173,7 @@ func (c *Codec) tryMd(idx int, prefix, ol oligo.Oligo, olen int, mdblks []uint64
 
 	// Insert
 	// Iterate through all positions and remove one nt
-	if difficulty > 2 && ol.Len() > mdsz {
+	if difficulty >= 2 && ol.Len() > mdsz {
 		for p := 0; p < mdsz + 1; p++ {
 			var mdol oligo.Oligo
 
@@ -281,12 +266,7 @@ func (c *Codec) tryIt(idx int, prefix, mdol, ol oligo.Oligo, olen int, mdblks []
 	}
 
 	// we reached the end, check if it's a match
-	mdshards := make([][]byte, len(mdblks))
-	for i := 0; i < len(mdshards); i++ {
-		mdshards[i] = append(mdshards[i], byte(mdblks[i]))
-	}
-
-	if ok, errr := c.ec.Verify(mdshards); !ok || errr != nil {
+	if ok, errr := c.checkMDBlocks(mdblks); !ok || errr != nil {
 		err = -1
 		return
 	}

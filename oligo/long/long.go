@@ -135,6 +135,11 @@ func (o *Oligo) At(idx int) int {
 	return int(o.seq[idx])
 }
 
+func  (o *Oligo) Set(idx int, nt int) {
+	o.unshare()
+	o.seq[idx] = byte(nt)
+}
+
 func (o *Oligo) Slice(start, end int) oligo.Oligo {
 //	fmt.Printf("Slice: %v start %d end %d: %v\n", o, start, end, o.seq)
 	olen := len(o.seq)

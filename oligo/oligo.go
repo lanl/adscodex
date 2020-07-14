@@ -33,6 +33,9 @@ type Oligo interface {
 	// Returns the nucleotide at position idx, -1 if out of bounds
 	At(idx int) int
 
+	// Sets a new nucleotide value at position idx
+	Set(idx int, nt int)
+
 	// Returns part of the oligo
 	Slice(start, end int) Oligo
 
@@ -286,5 +289,38 @@ func min2(a, b, aa, bb int) (int, int) {
 		return a, aa
 	} else {
 		return b, bb
+	}
+}
+
+// Reverses an oligo, i.e. nucleotide at position 0 becomes the one at position o.Len(), etc.
+func Reverse(o Oligo) {
+	olen := o.Len()
+	for i := 0; i < olen / 2; i++ {
+		n1 := o.At(i)
+		n2 := o.At(olen - i - 1)
+		o.Set(i, n2)
+		o.Set(olen - i - 1, n1)
+	}
+		
+}
+
+// Inverts an oligo, i.e. A->T, T->A, C->G, G->C
+func Invert(o Oligo)  {
+	for i := 0; i < o.Len(); i++ {
+		nt := o.At(i)
+		switch nt {
+		case A:
+			nt = T
+		case T:
+			nt = A
+		case G:
+			nt = C
+		case C:
+			nt = G
+		default:
+			panic("unknown nucleotide")
+		}
+
+		o.Set(i, nt)
 	}
 }

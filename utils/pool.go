@@ -183,8 +183,11 @@ func (p *Pool) Count(ol oligo.Oligo) int {
 }
 
 func (p *Pool) InitSearch() (err error) {
-	p.trie, err = NewTrie(p.oligos)
+	if p.trie != nil {
+		return nil
+	}
 
+	p.trie, err = NewTrie(p.oligos)
 	return
 }
 

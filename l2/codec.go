@@ -82,7 +82,7 @@ func (c *Codec) SetMetadataChecksum(cs int) error {
 
 // See the description of the appropriate function in the L1 code
 func (c *Codec) SetDataChecksum(cs int) error {
-	return c.c1.SetMetadataChecksum(cs)
+	return c.c1.SetDataChecksum(cs)
 }
 
 // Encodes logical data into a collection of oligos.

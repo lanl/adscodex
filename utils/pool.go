@@ -114,10 +114,11 @@ func (p *Pool) Parallel(procnum int, f func(ols []oligo.Oligo)) (pn int) {
 	return
 }
 
-// Trims everything outside of the prefix and the suffix.
+// Trims everything outside of the prefix and the suffix. If the oligo doesn't
+// have neither suffix nor prefix, it is discarded.
 // dist specifies the Levenshtein distance allowed in the prefix and suffix
 // and still match them.
-// If keep is true, the *ix are left, otherwise they are also removed
+// If keep is true, the *ixes are left, otherwise they are also removed
 func (p *Pool) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) {
 	var oligos []oligo.Oligo
 	var olcnt map[oligo.Oligo] int
@@ -172,6 +173,14 @@ func (p *Pool) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) {
 
 	p.oligos = oligos
 	p.olcnt = olcnt
+}
+
+func (p *Pool) Oligos() []oligo.Oligo {
+	return p.oligos
+}
+
+func (p *Pool) Size() int {
+	return len(p.oligos)
 }
 
 func (p *Pool) Count(ol oligo.Oligo) int {

@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/pprof"
+	"sync"
 	"time"
 	"container/heap"
 	"acoma/oligo"
@@ -12,7 +14,7 @@ import (
 	"acoma/oligo/long"
 	"acoma/io/fastq"
 	"acoma/io/csv"
-	"acoma/criteria"
+_	"acoma/criteria"
 	"acoma/utils"
 )
 
@@ -23,6 +25,7 @@ type Kpair struct {
 }
 
 type Graph struct {
+	sync.Mutex
 	klen	int		// kmer length
 
 	kmap	map[Kmer]int
@@ -36,6 +39,11 @@ type Oligo struct {
 	rkmer	Kmer
 	mval	int
 	kmap	map[Kmer] bool
+}
+
+type Seq struct {
+	seq	string
+	rev	bool
 }
 
 var ftype = flag.String("t", "fastq", "file type")
@@ -56,12 +64,27 @@ func NewGraph(kmerLen int) *Graph {
 }
 
 func (g *Graph) Add(k Kmer) {
+	g.Lock()
 	if n, found := g.kmap[k]; found {
 		g.heap[n].n++
 	} else {
 		g.kmap[k] = len(g.heap)
 		g.heap = append(g.heap, Kpair { k, 1 })
 	}
+	g.Unlock()
+}
+
+func (g *Graph) AddAll(ks []Kmer) {
+	g.Lock()
+	for _, k := range ks {
+		if n, found := g.kmap[k]; found {
+			g.heap[n].n++
+		} else {
+			g.kmap[k] = len(g.heap)
+			g.heap = append(g.heap, Kpair { k, 1 })
+		}
+	}
+	g.Unlock()
 }
 
 func (g *Graph) Sub(k Kmer, v int) {
@@ -273,12 +296,24 @@ func main() {
 		}
 	}
 
-	count := 0
+	ch := make(chan Seq, 20)
+	ech := make(chan int)
 	graph := NewGraph(*klen)
+	nprocs := runtime.NumCPU()
+	for i := 0; i < nprocs; i++ {
+		go seqproc(graph, *klen, ch, ech)
+	}
+
+	count := 0
 	t := time.Now()
 	for i := 0; i < flag.NArg(); i++ {
 		fmt.Fprintf(os.Stderr, "\nProcessing %s", flag.Arg(i))
 		fname := flag.Arg(i)
+		fproc := func(id, sequence string, quality []byte, reverse bool) error {
+                        ch <- Seq{sequence, reverse}
+                        return nil
+                }
+/*
 		fproc := func(id, sequence string, quality []byte, reverse bool) error {
 			if count != 0 && count%10000 == 0 {
 				fmt.Fprintf(os.Stderr, ".")
@@ -305,6 +340,7 @@ func main() {
 
                         return nil
                 }
+*/
 
 		var err error
 		switch (*ftype) {
@@ -322,7 +358,16 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
+	}
 
+	// signal the coroutines to finish
+	for i := 0; i < nprocs; i++ {
+		ch <- Seq{"", false}
+	}
+
+	// and wait for them to actually finish
+	for i := 0; i < nprocs; i++ {
+		count += <-ech
 	}
 	d := time.Since(t)
 
@@ -394,3 +439,52 @@ func main() {
 		good, float64(good)/float64(d.Seconds()), pool.Size())
 }
 
+func seqproc(graph *Graph, klen int, ch chan Seq, ech chan int) {
+	var count  uint64
+
+	kmers := make([]Kmer, 1000)
+	for {
+		var ol oligo.Oligo
+		var ok bool
+
+		s := <-ch
+		if s.seq == "" {
+			break
+		}
+
+		count++
+		if count%10000 == 0 {
+			fmt.Fprintf(os.Stderr, ".")
+		}
+
+		ol, ok = long.FromString(s.seq)
+		if !ok {
+			continue
+		}
+
+		if s.rev {
+			oligo.Reverse(ol)
+			oligo.Invert(ol)
+		}
+
+		// generate all kmers from the oligo
+		seq := ol.String()
+		nkmer := len(seq) - klen + 1
+		if nkmer < 0 {
+			continue
+		}
+//		if len(kmers) < nkmer {
+//			kmers = make([]Kmer, nkmer)
+//		}
+
+		for i := 0; i < nkmer; i++ {
+			kmers[i] = Kmer(seq[i:i+klen])
+		}
+
+//		fmt.Printf("%v -> %v\n", ol, kmers[0:nkmer])
+		// add them to the map and heap
+		graph.AddAll(kmers[0:nkmer])
+	}
+
+	ech <- int(count)
+}

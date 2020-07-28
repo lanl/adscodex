@@ -14,7 +14,7 @@ import (
 	"acoma/oligo/long"
 	"acoma/io/fastq"
 	"acoma/io/csv"
-_	"acoma/criteria"
+	"acoma/criteria"
 	"acoma/utils"
 )
 
@@ -477,13 +477,21 @@ func seqproc(graph *Graph, klen int, ch chan Seq, ech chan int) {
 //			kmers = make([]Kmer, nkmer)
 //		}
 
+		var n int
 		for i := 0; i < nkmer; i++ {
-			kmers[i] = Kmer(seq[i:i+klen])
+			kmer := seq[i:i+klen]
+			kol := long.FromString1(kmer)
+			if !criteria.H4G2.Check(kol) {
+				continue
+			}
+
+			kmers[n] = Kmer(kmer)
+			n++
 		}
 
 //		fmt.Printf("%v -> %v\n", ol, kmers[0:nkmer])
 		// add them to the map and heap
-		graph.AddAll(kmers[0:nkmer])
+		graph.AddAll(kmers[0:n])
 	}
 
 	ech <- int(count)

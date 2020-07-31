@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"sync"
 	"acoma/oligo"
 	"acoma/oligo/long"
@@ -29,7 +30,7 @@ var ftype = flag.String("t", "fastq", "file type")
 var pr5, pr3 oligo.Oligo
 var dspool *utils.Pool
 var ulock sync.Mutex
-var umap map[string]bool
+var umap map[string]int
 var total, selected, prcount uint64
 
 func main() {
@@ -73,7 +74,7 @@ func main() {
 		}
 	}
 
-	umap = make(map[string] bool)
+	umap = make(map[string] int)
 	ch := make(chan Seq, 20)
 	ech := make(chan bool)
 	nprocs := runtime.NumCPU()
@@ -116,6 +117,22 @@ func main() {
 		<-ech
 	}
 
+
+	if *unique {
+		seqs := make([]string, 0, len(umap))
+		for seq, _ := range umap {
+			seqs = append(seqs, seq)
+		}
+
+		sort.Slice(seqs, func (i, j int) bool {
+			return umap[seqs[i]] > umap[seqs[j]]
+		})
+
+		for _, seq := range seqs {
+			fmt.Printf("%v %d\n", seq, umap[seq])
+		}
+	}
+
 	fmt.Fprintf(os.Stderr, "\nTotal: %d, selected %d, with primers %d\n", total, selected, prcount)
 }
 
@@ -132,7 +149,7 @@ func seqproc(ch chan Seq, ech chan bool) {
 		}
 
 		count++
-		if count%1000 == 0 {
+		if count%10000 == 0 {
 			fmt.Fprintf(os.Stderr, ".")
 		}
 
@@ -158,19 +175,12 @@ func seqproc(ch chan Seq, ech chan bool) {
 		}
 
 		ss := ol.String()
-		print := true
 		if *unique {
-			print = false
 			ulock.Lock()
-			if !umap[ss] {
-				print = true
-				umap[ss] = true
-			}
+			umap[ss]++
 			ulock.Unlock()
-		}
-
-		if print {
-			fmt.Printf("%s\n", ss)
+		} else {
+			fmt.Printf("%v\n", ss)
 		}
 	}
 

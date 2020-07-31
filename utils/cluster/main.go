@@ -39,7 +39,7 @@ func main() {
 	if *datasetFile != "" {
 		dspool, err = utils.ReadPool([]string { *datasetFile }, false, csv.Parse)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
 		}
 	}
@@ -49,6 +49,7 @@ func main() {
 		fns = append(fns, flag.Arg(i))
 	}
 
+	fmt.Fprintf(os.Stderr, "Reading files %v...\n", fns)
 	switch *ftype {
 	default:
 		err = fmt.Errorf("invalid file type: %v\n", *ftype)
@@ -61,7 +62,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
 
@@ -90,9 +91,10 @@ func main() {
 		dspool.Trim(pr5, pr3, *pdist, true)
 	}
 
+	fmt.Fprintf(os.Stderr, "Building clusters...\n");
 	clusters := FindClusters(pool, *distance)
 	if *debug {
-		fmt.Printf("# clusters: dist %d %d\n", *distance, len(clusters))
+		fmt.Fprintf(os.Stderr, "# clusters: dist %d %d\n", *distance, len(clusters))
 	}
 
 	var clist []ClusterStat
@@ -146,14 +148,14 @@ func main() {
 			pchan = nil
 		}
 
-//		fmt.Printf("%d %d  %p\n", i, n, pchan)
+//		fmt.Fprintf(os.Stderr, "%d %d  %p\n", i, n, pchan)
 		select {
 		case pchan <- c:
-//			fmt.Printf(">>> %p\n", c)
+//			fmt.Fprintf(os.Stderr, ">>> %p\n", c)
 			n++
 
 		case cs := <- rchan:
-//			fmt.Printf("<<< %p\n", &cs)
+//			fmt.Fprintf(os.Stderr, "<<< %p\n", &cs)
 			cs.cid = len(clist)
 			clist = append(clist, cs)
 			seqnum += len(cs.seqs)
@@ -188,14 +190,14 @@ func main() {
 			readnum += pool.Count(s)
 		}
 
-		fmt.Printf("%d %d %d %d %d\n", cs.cid, cs.diameter, len(cs.seqs), len(cs.smatch), readnum)
+		fmt.Fprintf(os.Stderr, "%d %d %d %d %d\n", cs.cid, cs.diameter, len(cs.seqs), len(cs.smatch), readnum)
 		if *debug {
 			for _, s := range cs.smatch {
-				fmt.Printf("\t#SYN %s\n", s)
+				fmt.Fprintf(os.Stdout, "\t#SYN %s\n", s)
 			}
 
 			for _, s := range cs.seqs {
-				fmt.Printf("\t#SEQ %s %d\n", s, pool.Count(s))
+				fmt.Fprintf(os.Stdout, "\t#SEQ %s %d\n", s, pool.Count(s))
 			}
 		}
 	}

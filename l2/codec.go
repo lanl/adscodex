@@ -141,6 +141,7 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 		}
 
 		// encode the data oligos for an erasure group
+		fmt.Printf("----\n")
 		for i := 0; i < c.dseqnum; i++ {
 			var o oligo.Oligo
 
@@ -150,6 +151,7 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 			}
 
 			oligos = append(oligos, o)
+			fmt.Printf("%07d: * %v\n", addr + uint64(i), o)
 		}
 
 		// encode the erasure oligos for an erasure group
@@ -161,6 +163,8 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 				return
 			}
 			oligos = append(oligos, o)
+
+			fmt.Printf("%07d: - %v\n", addr + uint64(i), o)
 		}
 
 		addr += uint64(c.dseqnum)

@@ -33,7 +33,7 @@ type Table struct {
 	bits	int			// how many bits to skip
 	prefix	*short.Oligo		// prefix
 	tbl	[]uint64		// 
-	maxval	uint64			// maximum value (used for debugging)
+	maxval	uint64			// maximum value
 }
 
 func newTable(prefix *short.Oligo, bits int) *Table {
@@ -98,6 +98,27 @@ func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (o oligo.Oligo, val 
 	o = short.Val(lt.oligolen, idx<<tbl.bits)
 	val = tbl.tbl[idx]
 	return
+}
+
+func (lt *LookupTable) MaxVal() uint64 {
+	var m uint64
+
+	for _, t := range lt.pfxtbl {
+		if m < t.maxval {
+			m = t.maxval
+		}
+	}
+
+	return m
+}
+
+func (lt *LookupTable) MaxVals() string {
+	s := ""
+	for _, t := range lt.pfxtbl {
+		s += fmt.Sprintf("%v %d\n", t.prefix, t.maxval)
+	}
+
+	return s
 }
 
 // Convert the table to a string (for debugging)

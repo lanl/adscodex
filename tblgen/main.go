@@ -33,6 +33,9 @@ func main() {
 		if err != nil {
 			goto error
 		}
+
+		fmt.Printf("Encoding Maxvalues:\n%v\n", lt.MaxVals())
+		fmt.Printf("Encoding Maxvalue:\n%v\n", lt.MaxVal())
 	}
 
 	if *decfile != "" {
@@ -41,6 +44,9 @@ func main() {
 		if err != nil {
 			goto error
 		}
+
+		fmt.Printf("Decoding Maxvalules:\n%v\n", lt.MaxVals())
+		fmt.Printf("Decoding Maxvalue:\n%v\n", lt.MaxVal())
 	}
 
 	return

@@ -17,11 +17,13 @@ func (tbl *Table) Write(w io.Writer) (err error) {
 		buf = Pint32(0, buf)
 		buf = Pint32(0, buf)
 		buf = Pint64(0, buf)
+		buf = Pint64(0, buf)
 		buf = Pint32(0, buf)
 	} else {
 		buf = Pint32(uint32(tbl.bits), buf)
 		buf = Pint32(uint32(tbl.prefix.Len()), buf)
 		buf = Pint64(tbl.prefix.Uint64(), buf)
+		buf = Pint64(tbl.maxval, buf)
 		buf = Pint32(uint32(len(tbl.tbl)), buf)
 
 		for _, n := range tbl.tbl {
@@ -54,6 +56,7 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	v64, p = Gint64(p)
 	tbl.prefix = short.Val(int(v), v64)
 
+	tbl.maxval, p = Gint64(p)
 	v, p = Gint32(p)
 	tlen := int(v)
 

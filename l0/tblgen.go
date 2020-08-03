@@ -80,7 +80,7 @@ func BuildDecodingTable(prefix *short.Oligo, olen, nts int, c criteria.Criteria)
 	return
 }
 
-// build encoding tables for all 256 (4bp) different prefixes
+// build encoding tables for all different prefixes
 func BuildEncodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl *LookupTable) {
 	ltbl = new(LookupTable)
 	ltbl.oligolen = olen
@@ -110,7 +110,7 @@ func BuildEncodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl
 	return ltbl
 }
 
-// build decoding tables for all 256 (4bp) different prefixes
+// build decoding tables for all different prefixes
 func BuildDecodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl *LookupTable) {
 	ltbl = new(LookupTable)
 	ltbl.oligolen = olen

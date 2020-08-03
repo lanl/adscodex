@@ -13,6 +13,7 @@ type LookupTable struct {
 	pfxlen		int		// prefix length
 	crit		criteria.Criteria
 	pfxtbl		[]*Table	// tables for each of the prefixes
+	maxval		int		// maximum value that can be stored with the criteria at the oligoLen
 }
 
 // Lookup table for a single prefix
@@ -42,6 +43,32 @@ func newTable(prefix *short.Oligo, bits int) *Table {
 	tbl.bits = bits
 
 	return tbl
+}
+
+func getEncodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
+	if encodeTables != nil {
+		// find tables for the criteria (if any)
+		ctbl := encodeTables[c]
+		if ctbl != nil {
+			// find tables for the oligo len (if any)
+			tbl = ctbl[oligoLen]
+		}
+	}
+
+	return
+}
+
+func getDecodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
+	if decodeTables != nil {
+		// find tables for the criteria (if any)
+		ctbl := decodeTables[c]
+		if ctbl != nil {
+			// find tables for the oligo len (if any)
+			tbl = ctbl[oligoLen]
+		}
+	}
+
+	return
 }
 
 // Looks up a value in the encoding table

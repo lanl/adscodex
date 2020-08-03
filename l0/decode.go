@@ -13,7 +13,6 @@ var decodeTables map[criteria.Criteria] map[int]*LookupTable;
 // Decodes the specified oligo into a value
 // Returns error if the value can't be encoded
 func Decode(prefix, o oligo.Oligo, c criteria.Criteria) (val uint64, err error) {
-	var tbl *LookupTable
 	var so oligo.Oligo
 
 	if !c.Check(prefix) {
@@ -26,15 +25,7 @@ func Decode(prefix, o oligo.Oligo, c criteria.Criteria) (val uint64, err error) 
 		return
 	}
 
-	if decodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := decodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[o.Len()]
-		}
-	}
-
+	tbl := getDecodeTable(o.Len(), c)
 	if tbl != nil {
 		// find closest starting point
 		so, val = tbl.decodeLookup(prefix, o)

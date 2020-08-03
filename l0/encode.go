@@ -56,7 +56,7 @@ func encodeSlow(prefix, oo oligo.Oligo, val uint64, c criteria.Criteria) (o olig
 		}
 
 		if !o.Next() || o.Cmp(oend) >= 0 {
-			return o, fmt.Errorf("value too large: len %d val %d current %v:%d end %v", oo.Len(), val, o, n, oend)
+			return o, fmt.Errorf("value too large: prefix %v len %d val %d current %v:%d end %v", prefix, oo.Len(), val, o, n, oend)
 		}
 
 	}

@@ -54,12 +54,13 @@ var maxvals = []int {
 	3: 47,
 	4: 186,
 	5: 733,
-	6: 3855,
-	7: 15196,
-	8: 59901,
-	10: 930771,
-	12: 14462782,
-	14: 224729885,
+	6: 2889,
+	7: 11388,
+	8: 44891,
+	9: 176955,
+	10: 697537,
+	12: 10838676,
+	14: 168416727,
 }
 
 var crcParams = []crc.Parameters {
@@ -72,9 +73,11 @@ var crcParams = []crc.Parameters {
 	7: crc.Parameters{ Width: 13, Polynomial: 0x16f, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-13F/8.2
 
 	8: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-15/CAN
+	9: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-17
 	10: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// 
 	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// 
 	14: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		//
+	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		//
 }
 
 func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) *Codec {
@@ -83,13 +86,16 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) *Codec {
 	c.rsnum = rsnum
 	c.mdsz = mdsz
 	c.crit = crit
+	c.mdcsum = CSumCRC
 
 	// TODO: make it work with longer metadata blocks
-	if mdsz < 3 || mdsz > 7 {
+	if maxvals[mdsz * rsnum] == 0 {
+		fmt.Printf("invalid mdsz")
 		return nil
 	}
 
-	if c.updateChecksums() != nil {
+	if err := c.updateChecksums(); err != nil {
+		panic(err)
 		return nil
 	}
 
@@ -352,15 +358,15 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 		panic("Internal error: address not zero at the end")
 	}
 
-	if c.mdsz * 2 > 8 {
-		panic("metadata block too big (FIXME)")
-	}
-
 	switch (c.mdcsum) {
 	default:
 		panic("unsupported md checksum")
 
 	case CSumRS:
+		if c.mdsz * 2 > 8 {
+			panic("metadata block too big (FIXME)")
+		}
+
 		// calculate metadata erasure blocks
 		// first we need to convert the metadata blocks to arrays of bytes
 		mdshard := make([][]byte, len(mdb))

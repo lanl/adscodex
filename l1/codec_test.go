@@ -13,6 +13,13 @@ import (
 	"acoma/criteria"
 )
 
+var dbnum = flag.Int("dbnum", 5, "number of data blocks")
+var mdsz = flag.Int("mdsz", 4, "metadata block sizee")
+var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
+var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
+var iternum = flag.Int("iternum", 1000, "number of iterations")
+var errnum = flag.Int("errnum", 3, "number of errors")
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	os.Exit(m.Run())
@@ -49,9 +56,19 @@ func initTest(t *testing.T) {
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc = NewCodec(5, 4, 2, criteria.H4G2)
-//	if err := cdc.SetMetadataChecksum(CSumCRC); err != nil {
-	if err := cdc.SetMetadataChecksum(CSumRS); err != nil {
+	cdc = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	switch *mdctype {
+	default:
+		t.Fatalf("Error: invalid metadata EC type")
+
+	case "crc":
+		err = cdc.SetMetadataChecksum(CSumCRC)
+
+	case "rs":
+		err = cdc.SetMetadataChecksum(CSumRS)
+	}
+
+	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
 }
@@ -140,8 +157,8 @@ func TestRecover2(t *testing.T) {
 func TestRecover(t *testing.T) {
 	initTest(t)
 
-	nerr := 3
-	niter := 1000
+	nerr := *errnum
+	niter := *iternum
 
 	blks := make([][]byte, cdc.BlockNum())
 	for i := 0; i < len(blks); i++ {
@@ -229,7 +246,8 @@ func TestRecover(t *testing.T) {
 
 	}
 
-	fmt.Printf("error rate %v false positive rate %v\n", float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
+//	fmt.Printf("error rate %v false positive rate %v\n", float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
+	fmt.Printf("%d %d %d %s %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
 }
 
 func TestRecover3(t *testing.T) {

@@ -46,4 +46,5 @@ func Find(name string) Criteria {
 // This function is called when the packages is used
 func init() {
 	Register("h4g2", H4G2)
+	Register("h4g1", H4G1)
 }

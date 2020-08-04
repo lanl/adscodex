@@ -2,6 +2,7 @@ package l0
 
 import (
 	"fmt"
+	"math"
 	"acoma/criteria"
 	"acoma/oligo"
 	"acoma/oligo/short"
@@ -13,7 +14,7 @@ type LookupTable struct {
 	pfxlen		int		// prefix length
 	crit		criteria.Criteria
 	pfxtbl		[]*Table	// tables for each of the prefixes
-	maxval		int		// maximum value that can be stored with the criteria at the oligoLen
+	maxval		int64		// maximum value that can be stored with the criteria at the oligoLen
 }
 
 // Lookup table for a single prefix
@@ -130,8 +131,9 @@ func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (o oligo.Oligo, val 
 func (lt *LookupTable) MaxVal() uint64 {
 	var m uint64
 
+	m = math.MaxInt64
 	for _, t := range lt.pfxtbl {
-		if m < t.maxval {
+		if t.maxval != 0 && m > t.maxval {
 			m = t.maxval
 		}
 	}

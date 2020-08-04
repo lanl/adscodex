@@ -18,13 +18,11 @@ func main() {
 	var err error
 
 	flag.Parse()
-	switch *crit {
-	default:
+
+	c = criteria.Find(*crit)
+	if c == nil {
 		fmt.Printf("Error: invalid criteria\n")
 		return
-
-	case "h4g2":
-		c = criteria.H4G2
 	}
 
 	if *encfile != "" {

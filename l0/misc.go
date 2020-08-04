@@ -4,7 +4,7 @@ import (
 	"acoma/criteria"
 )
 
-func MaxVal(oligoLen int, c criteria.Criteria) int {
+func MaxVal(oligoLen int, c criteria.Criteria) int64 {
 	tbl := getEncodeTable(oligoLen, c)
 	if tbl == nil {
 		return -1
@@ -22,7 +22,7 @@ func MaxBits(oligoLen int, c criteria.Criteria) int {
 	// TODO: we can store the value in the lookup table if we need it faster
 	v := MaxVal(oligoLen, c)
 	if v <= 0 {
-		return v
+		return -1
 	}
 
 	var n int

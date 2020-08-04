@@ -107,6 +107,7 @@ func BuildEncodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl
 		<-done
 	}
 
+	ltbl.maxval = int64(ltbl.MaxVal())
 	return ltbl
 }
 
@@ -137,5 +138,6 @@ func BuildDecodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl
 		<-done
 	}
 
+	ltbl.maxval = int64(ltbl.MaxVal())
 	return
 }

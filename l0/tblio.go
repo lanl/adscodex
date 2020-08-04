@@ -48,12 +48,12 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	var v64 uint64
 	var p []byte
 
-	buf := make([]byte, 20)
+	buf := make([]byte, 28)
 
 	n, err = r.Read(buf)
 	if err != nil {
 		return
-	} else if n != 20 {
+	} else if n != 28 {
 		return errors.New("short read")
 	}
 

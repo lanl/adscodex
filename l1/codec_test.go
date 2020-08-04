@@ -19,6 +19,7 @@ var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
 var iternum = flag.Int("iternum", 1000, "number of iterations")
 var errnum = flag.Int("errnum", 3, "number of errors")
+var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -40,16 +41,19 @@ func initTest(t *testing.T) {
 		return
 	}
 
-	err := l0.LoadEncodeTable("../tbl/encnt17b13.tbl", criteria.H4G2)
+	err := l0.LoadEncodeTable("../tbl/h4g2-17-13.etbl", criteria.H4G2)
 	if err != nil {
 		t.Fatalf("error while loading encoding table: %v\n", err)
 	}
 
-	err = l0.LoadDecodeTable("../tbl/decnt17b7.tbl", criteria.H4G2)
+	err = l0.LoadDecodeTable("../tbl/h4g2-17-07.dtbl", criteria.H4G2)
 	if err != nil {
 		t.Fatalf("error while loading decoding table: %v\n", err)
 	}
 
+	c := criteria.H4G2
+	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(c.FeatureLength(), *mdsz, *mdsz, c))
+	l0.RegisterEncodeTable(l0.BuildEncodingLookupTable(c.FeatureLength(), *mdsz, *mdsz, c))
 //	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
 //	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
 
@@ -204,7 +208,7 @@ func TestRecover(t *testing.T) {
 		eol, _ := long.FromString(seq)
 		
 //		tt = time.Now()
-		daddr, dec, _, err := cdc.Decode(p5, p3, eol, 0)
+		daddr, dec, _, err := cdc.Decode(p5, p3, eol, *dfclty)
 //		dt := time.Since(tt)
 
 		if err != nil {
@@ -247,7 +251,7 @@ func TestRecover(t *testing.T) {
 	}
 
 //	fmt.Printf("error rate %v false positive rate %v\n", float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
-	fmt.Printf("%d %d %d %s %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
+	fmt.Printf("%d %d %d %s %d %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
 }
 
 func TestRecover3(t *testing.T) {

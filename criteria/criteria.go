@@ -17,6 +17,9 @@ type Criteria interface {
 	// If the criteria doesn't have specific feature length, it should return -1.
 	FeatureLength() int
 
+	// Textual ID of the criteria
+	String() string
+
 	// returns true if the oligo is acceptible
 	Check(o oligo.Oligo) bool
 }
@@ -42,5 +45,5 @@ func Find(name string) Criteria {
 
 // This function is called when the packages is used
 func init() {
-	Register("H4G2", H4G2)
+	Register("h4g2", H4G2)
 }

@@ -80,8 +80,8 @@ var crcParams = []crc.Parameters {
 	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		//
 }
 
-func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) *Codec {
-	c := new(Codec)
+func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err error) {
+	c = new(Codec)
 	c.blknum = blknum
 	c.rsnum = rsnum
 	c.mdsz = mdsz
@@ -90,16 +90,32 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) *Codec {
 
 	// TODO: make it work with longer metadata blocks
 	if maxvals[mdsz * rsnum] == 0 {
-		fmt.Printf("invalid mdsz")
-		return nil
+		return nil, fmt.Errorf("unsupported metadata size: %d", mdsz)
 	}
 
 	if err := c.updateChecksums(); err != nil {
-		panic(err)
-		return nil
+		return nil, err
 	}
 
-	return c
+	// get the lookup tables for data blocks
+	if err := l0.LoadOrGenerateEncodeTable(17, crit); err != nil {
+		return nil, fmt.Errorf("error while loading encoding table: %v\n", err)
+	}
+
+	if err := l0.LoadOrGenerateDecodeTable(17, crit); err != nil {
+		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
+	}
+
+	// get the lookup tables for the metadata blocks
+	if err := l0.LoadOrGenerateEncodeTable(mdsz, crit); err != nil {
+		return nil, fmt.Errorf("error while loading encoding table: %v\n", err)
+	}
+
+	if err := l0.LoadOrGenerateDecodeTable(mdsz, crit); err != nil {
+		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
+	}
+
+	return
 }
 
 // Change which checksum algorithm is used to protect the metadata blocks

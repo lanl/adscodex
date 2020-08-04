@@ -9,7 +9,6 @@ import (
 	"time"
 	"acoma/oligo"
 	"acoma/oligo/long"
-	"acoma/l0"
 	"acoma/criteria"
 )
 
@@ -20,6 +19,7 @@ var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or
 var iternum = flag.Int("iternum", 1000, "number of iterations")
 var errnum = flag.Int("errnum", 3, "number of errors")
 var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
+var crit = flag.String("crit", "h4g2", "criteria")
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -37,30 +37,25 @@ var failed2 = [...]string {
 
 
 func initTest(t *testing.T) {
+	var err error
+
 	if cdc != nil {
 		return
 	}
 
-	err := l0.LoadEncodeTable("../tbl/h4g2-17-13.etbl", criteria.H4G2)
-	if err != nil {
-		t.Fatalf("error while loading encoding table: %v\n", err)
+	c := criteria.Find(*crit)
+	if c == nil {
+		t.Fatalf("criteria '%s' not found\n", *crit)
 	}
-
-	err = l0.LoadDecodeTable("../tbl/h4g2-17-07.dtbl", criteria.H4G2)
-	if err != nil {
-		t.Fatalf("error while loading decoding table: %v\n", err)
-	}
-
-	c := criteria.H4G2
-	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(c.FeatureLength(), *mdsz, *mdsz, c))
-	l0.RegisterEncodeTable(l0.BuildEncodingLookupTable(c.FeatureLength(), *mdsz, *mdsz, c))
-//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
-//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
-
+	
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	cdc, err = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
 	switch *mdctype {
 	default:
 		t.Fatalf("Error: invalid metadata EC type")

@@ -15,6 +15,10 @@ func (h4g2) FeatureLength() int {
 	return 4
 }
 
+func (h4g2) String() string {
+	return "h4g2"
+}
+
 func (h4g2) Check(o oligo.Oligo) bool {
 	l := o.Len()
 	if l <= 0 {
@@ -40,4 +44,3 @@ func (h4g2) Check(o oligo.Oligo) bool {
 
 	return true
 }
-

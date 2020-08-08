@@ -161,7 +161,7 @@ func main() {
 		for _, m := range ms {
 			if *printOligos {
 				// print everything, takes more storage
-				fmt.Printf("%d %d %v %v %v %v\n", i, m.count, m.diff, m.seq.Qubundance(), m.count, m.oligo, m.seq)
+				fmt.Printf("%d %d %v %v %v %v\n", i, m.count, m.diff, m.seq.Qubundance(), m.oligo, m.seq)
 			} else {
 				// print only important stuff
 				fmt.Printf("%d %d %v %v\n", i, m.count, m.diff, m.seq.Qubundance())

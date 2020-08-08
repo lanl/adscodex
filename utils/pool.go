@@ -90,6 +90,31 @@ func ReadPool(fnames []string, unique bool, parse func(string, func(id, sequence
 	return
 }
 
+func (p *Pool) Remove(oligos []*Oligo) {
+	omap := make(map[*Oligo] bool)
+	for _, o := range oligos {
+		omap[o] = true
+	}
+
+	var n int
+	for i, o := range p.oligos {
+		if omap[o] {
+			p.oligos[i] = nil
+			n++
+		}
+	}
+
+	noligos := make([]*Oligo, 0, len(p.oligos) - n)
+	for _, o := range p.oligos {
+		if o != nil {
+			noligos = append(noligos, o)
+		}
+	}
+
+	p.oligos = noligos
+	p.trie = nil
+}
+
 func (p *Pool) Parallel(procnum int, f func(ols []*Oligo)) (pn int) {
 	ncpu := runtime.NumCPU()
 	if procnum > ncpu {

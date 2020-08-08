@@ -16,6 +16,7 @@ import (
 
 type Seq struct {
 	seq	string
+	quality	[]byte
 	rev	bool
 }
 
@@ -26,11 +27,13 @@ var p3 = flag.String("p3", "", "3'-end primer")
 var unique = flag.Bool("uq", true, "select unique oligos")
 var datasetFile = flag.String("ds", "", "dataset file")
 var ftype = flag.String("t", "fastq", "file type")
+var oligolen = flag.Int("l", 0, "if not zero, select only oligos with length +/- 10% of the specified value")
+var useqscore = flag.Bool("q", true, "use quality score (if available)")
 
 var pr5, pr3 oligo.Oligo
 var dspool *utils.Pool
 var ulock sync.Mutex
-var umap map[string]int
+var umap map[string]*utils.Oligo
 var total, selected, prcount uint64
 
 func main() {
@@ -72,9 +75,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
 		}
+
+		fmt.Fprintf(os.Stderr, "Dataset oligos: %d\n", dspool.Size())
 	}
 
-	umap = make(map[string] int)
+	fmt.Fprintf(os.Stderr, "Distance: %d Primer distance: %d\n", *dist, *pdist)
+	umap = make(map[string] *utils.Oligo)
 	ch := make(chan Seq, 20)
 	ech := make(chan bool)
 	nprocs := runtime.NumCPU()
@@ -86,7 +92,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Processing %s\n", flag.Arg(i))
 		fname := flag.Arg(i)
 		fproc := func(id, sequence string, quality []byte, reverse bool) error {
-                        ch <- Seq{sequence, reverse}
+			if !*useqscore {
+				quality = nil
+			}
+
+                        ch <- Seq{sequence, quality, reverse}
                         return nil
                 }
 
@@ -110,7 +120,7 @@ func main() {
 	}
 
 	for i := 0; i < nprocs; i++ {
-		ch <- Seq{"", false}
+		ch <- Seq{"", nil, false}
 	}
 
 	for i := 0; i < nprocs; i++ {
@@ -119,17 +129,17 @@ func main() {
 
 
 	if *unique {
-		seqs := make([]string, 0, len(umap))
-		for seq, _ := range umap {
-			seqs = append(seqs, seq)
+		oligos := make([]*utils.Oligo, 0, len(umap))
+		for _, o := range umap {
+			oligos = append(oligos, o)
 		}
 
-		sort.Slice(seqs, func (i, j int) bool {
-			return umap[seqs[i]] > umap[seqs[j]]
+		sort.Slice(oligos, func (i, j int) bool {
+			return oligos[i].Qubundance() > oligos[j].Qubundance()
 		})
 
-		for _, seq := range seqs {
-			fmt.Printf("%v %d\n", seq, umap[seq])
+		for _, o := range oligos {
+			fmt.Printf("%v %v %v\n", o.String(), o.Qubundance(), o.Count())
 		}
 	}
 
@@ -137,11 +147,12 @@ func main() {
 }
 
 func seqproc(ch chan Seq, ech chan bool) {
+	var ok bool
 	var count, ptotal, prcnt uint64
 
+	qubu := make([]float64, 500)
 	for {
-		var ol oligo.Oligo
-		var ok bool
+		var ol *utils.Oligo
 
 		s := <-ch
 		if s.seq == "" {
@@ -154,33 +165,54 @@ func seqproc(ch chan Seq, ech chan bool) {
 		}
 
 		ptotal++
-		ol, ok = long.FromString(s.seq)
+		if len(s.quality) > len(qubu) {
+			qubu = make([]float64, len(s.quality))
+		}
+
+		for i, q := range s.quality {
+			qubu[i] = 1 - utils.PhredQuality(q)
+		}
+
+		ol, ok = utils.FromString(s.seq, qubu[0:len(s.quality)])
 		if !ok {
 			continue
 		}
 
 		if s.rev {
-			oligo.Reverse(ol)
-			oligo.Invert(ol)
+			ol.Reverse()
+			ol.Invert()
 		}
 
-		if !utils.TrimOligo(ol, pr5, pr3, *pdist, true) {
+		tol := ol.Trim(pr5, pr3, *pdist, true)
+		if tol == nil {
 			continue
 		}
 
+		if *oligolen != 0 {
+			tlen := float64(tol.Len())
+			olen := float64(*oligolen)
+			if tlen < olen*0.9 || tlen > olen*1.1 {
+				continue
+			}
+		}
+
 		prcnt++
-		if dspool != nil && dspool.Search(ol, *dist) == nil {
+		if dspool != nil && dspool.Search(tol, *dist) == nil {
 			// doesn't match an oligo in the dataset
 			continue
 		}
 
-		ss := ol.String()
+		ss := tol.String()
 		if *unique {
 			ulock.Lock()
-			umap[ss]++
+			if o, ok := umap[ss]; ok {
+				o.Inc(ol.Count(), ol.Qubundances())
+			} else {
+				umap[ss] = ol
+			}
 			ulock.Unlock()
 		} else {
-			fmt.Printf("%v\n", ss)
+			fmt.Printf("%v %v %v\n", ss, ol.Qubundance(), ol.Count())
 		}
 	}
 

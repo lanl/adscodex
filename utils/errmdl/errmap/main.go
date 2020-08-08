@@ -21,7 +21,7 @@ var p3 = flag.String("p3", "", "3'-end primer")
 
 type Match struct {
 	oligo	oligo.Oligo		// the original oligo from the synthesis file
-	seq	oligo.Oligo		// the sequence from the results
+	seq	*utils.Oligo		// the sequence from the results
 	diff	string			// difference from the oligo to seq
 	count	int			// number of reads of the sequence
 }
@@ -82,9 +82,9 @@ func main() {
 	dspool.InitSearch()
 
 	// find matches for each oligo in the dataset
-	ch := make(chan map[oligo.Oligo]oligo.Oligo)
-	nprocs := pool.Parallel(1024, func (ols []oligo.Oligo) {
-		m := make(map[oligo.Oligo] oligo.Oligo)
+	ch := make(chan []*Match)
+	nprocs := pool.Parallel(1024, func (ols []*utils.Oligo) {
+		var ret []*Match
 		for _, ol := range ols {
 			var mss []utils.DistSeq
 			var d int
@@ -113,7 +113,7 @@ func main() {
 			var match oligo.Oligo
 			switch len(matches) {
 			case 0:
-				fmt.Printf("no match for %v\n", ol)
+				fmt.Fprintf(os.Stderr, "no match for %v\n", ol)
 				continue
 
 			case 1:
@@ -125,44 +125,24 @@ func main() {
 				match = matches[rand.Intn(len(matches))]
 			}
 
-			m[ol] = match
+			m := new(Match)
+			m.oligo = match
+			m.seq = ol
+			_, m.diff = oligo.Diff(m.oligo, m.seq)
+
+			ret = append(ret, m)
 		}
 	
-		ch <- m
+		ch <- ret
 	})
 
 	// wait for the goroutines to finish, collect the matches found
-	matchmap := make(map[oligo.Oligo] *Match)
+	omap := make(map[oligo.Oligo][]*Match)
 	for i := 0; i < nprocs; i++ {
 		ms := <-ch
-		for s, o := range ms {
-			m := new(Match)
-			m.oligo = o
-			m.seq = s
-			m.count = pool.Count(s)
-			matchmap[s] = m
+		for _, m := range ms {
+			omap[m.oligo] = append(omap[m.oligo], m)
 		}
-	}
-
-	// calculate the differences for each sequence
-	nprocs = pool.Parallel(1024, func (ols []oligo.Oligo) {
-		for _, ol := range ols {
-			m := matchmap[ol]
-			_, m.diff = oligo.Diff(m.oligo, m.seq)
-		}
-
-		ch <- nil
-	})
-
-	// wait for the goroutines to finish
-	for i := 0; i < nprocs; i++ {
-		<- ch
-	}
-
-	// map to oligos instead of reads
-	omap := make(map[oligo.Oligo][]*Match)
-	for _, m := range matchmap {
-		omap[m.oligo] = append(omap[m.oligo], m)
 	}
 
 	// print oligos and the diffs
@@ -181,10 +161,10 @@ func main() {
 		for _, m := range ms {
 			if *printOligos {
 				// print everything, takes more storage
-				fmt.Printf("%d %d %v %v %v\n", i, m.count, m.diff, m.count, m.oligo, m.seq)
+				fmt.Printf("%d %d %v %v %v %v\n", i, m.count, m.diff, m.seq.Qubundance(), m.count, m.oligo, m.seq)
 			} else {
 				// print only important stuff
-				fmt.Printf("%d %d %v\n", i, m.count, m.diff)
+				fmt.Printf("%d %d %v %v\n", i, m.count, m.diff, m.seq.Qubundance())
 			}
 
 		}

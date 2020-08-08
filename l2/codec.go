@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"runtime"
 	"crypto/sha1"
-	"hash/crc32"
+	"hash/crc64"
 	"acoma/oligo"
 	"acoma/criteria"
 	"acoma/l0"
@@ -23,6 +23,7 @@ type Codec struct {
 
 	c1	*l1.Codec
 	ec	reedsolomon.Encoder
+	crctbl	*crc64.Table
 }
 
 // Data extent
@@ -41,6 +42,10 @@ type doligo struct {
 	oligo	oligo.Oligo	// we couldn't decode it
 }
 
+const (
+	superChunkSize = 512 * 1024		// superblock at every 512k
+)
+
 var Eec = errors.New("parity blocks don't match")
 
 // Creates a new L2 codec
@@ -55,24 +60,27 @@ var Eec = errors.New("parity blocks don't match")
 //
 // Additional SetMetadataChecksum and SetDataChecksum functions
 // can be called to change the behavior of the L1 codec
-func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdcsum, dseqnum, rseqnum int) *Codec {
-	var err error
-
-	c := new(Codec)
+func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdcsum, dseqnum, rseqnum int) (c *Codec, err error) {
+	c = new(Codec)
 	c.p5 = p5
 	c.p3 = p3
 	c.dblknum = dblknum
 	c.dseqnum = dseqnum
 	c.rseqnum = rseqnum
-	c.c1 = l1.NewCodec(dblknum, mdsz, mdcsum, criteria.H4G2)
-	c.ec, err = reedsolomon.New(dseqnum, rseqnum)
-
+	c.c1, err = l1.NewCodec(dblknum, mdsz, mdcsum, criteria.H4G2)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		panic("reedsolomon error")
+		c = nil
+		return
 	}
 
-	return c
+	c.ec, err = reedsolomon.New(dseqnum, rseqnum)
+	if err != nil {
+		c = nil
+		return
+	}
+	c.crctbl = crc64.MakeTable(crc64.ECMA)
+
+	return
 }
 
 // See the description of the appropriate function in the L1 code
@@ -98,7 +106,7 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 	blksz := c.c1.BlockSize()
 
 	// first add the superblocks
-	data = c.addSupers(data)
+//	data = c.addSupers(data)
 
 	// then pad the data at the back so it's multiple of the data per erasure group
 	oligosz := blknum * blksz
@@ -177,10 +185,10 @@ func (c *Codec) addSupers(data []byte) (nd []byte) {
 	nd = l0.Pint64(datasz, nil)			// "file" size
 	s := sha1.Sum(data)
 	nd = append(nd, s[:]...)			// SHA1 sum for the whole "file"
-	nd = l0.Pint32(crc32.ChecksumIEEE(nd), nd)	// CRC32 of the superblock
+	nd = l0.Pint64(crc64.Checksum(nd, c.crctbl), nd)	// CRC64 of the superblock
 
 	for len(data) > 0 {
-		sz := 512*1024	// 512K
+		sz := superChunkSize
 		if sz > len(data) {
 			sz = len(data)
 		}
@@ -193,13 +201,36 @@ func (c *Codec) addSupers(data []byte) (nd []byte) {
 		nd = l0.Pint64(datasz, nd)			// "file" size
 		s = sha1.Sum(data[0:sz])
 		nd = append(nd, s[:]...)			// SHA1 sum for the data chunk
-		nd = l0.Pint32(crc32.ChecksumIEEE(nd[p:]), nd)	// CRC32 of the superblock
+		nd = l0.Pint64(crc64.Checksum(nd[p:], c.crctbl), nd)	// CRC64 of the superblock
 
 		data = data[sz:]
 	}
 
 	return
 }
+
+/*
+func (c *Codec) checkSupers(dss []DataExtent) (ndss []DataExtent, err error) {
+	var fsz uint64
+	var fsha1 uint64
+
+	// front super
+	ds := dss[0]
+	if ds.Offset == 0 && len(ds.Data) >= 36 {
+		sz, p := Gint64(ds.Data)
+		sha1 := p[0:20]
+		crc1, _ := Gint64(p[20:])
+
+		crc2 := crc64.Checksum(ds.Data[0:28])
+		if crc1 == crc2 {
+			fsz = sz
+			fsha1 = sha1
+		} else {
+			fmt.Fprintf(os.Stderr, "CRC doesn't match: %v expected %v\n", crc2, crc1)
+		}
+	}
+}
+*/
 
 // Decodes oligos with addresses from start to end.
 // The oligos array may contain extra oligo sequences that are not used.

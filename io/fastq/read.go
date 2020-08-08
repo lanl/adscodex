@@ -79,12 +79,12 @@ func Parse(fname string, process func(id, sequence string, quality []byte, rever
 		}
 		qual := sc.Text()
 		if len(qual) != len(seq) {
-			return fmt.Errorf("lengths of sequence and quality lines differ: %d:%d", len(seq), len(qual))
+			return fmt.Errorf("lengths of sequence and quality lines differ: %d:%d %v %v", len(seq), len(qual), seq, qual)
 		}
 
 		qa := make([]byte, len(qual))
 		for i, c := range(qual) {
-			qa[i] = byte(c) - '!'
+			qa[i] = byte(c) - 33 // '!'
 		}
 
 		// this is Illumina specific way to figure out if the oligo is

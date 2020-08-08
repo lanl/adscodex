@@ -5,30 +5,19 @@ import (
 	"fmt"
 	"os"
 	"acoma/oligo/long"
-	"acoma/l0"
 	"acoma/l1"
 	"acoma/l2"
-	"acoma/criteria"
 )
 
-var enctbl = flag.String("etbl", "../tbl/encnt17b13.tbl", "encoding lookup table")
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
-var mdcsum = flag.String("mdcsum", "rs", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
+var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 
 func main() {
 	flag.Parse()
-
-	if *enctbl != "" {
-		err := l0.LoadEncodeTable(*enctbl, criteria.H4G2)
-		if err != nil {
-			fmt.Printf("error while loading encoding table:%s: %v\n", err)
-			return
-		}
-	}
 
 	p5, ok := long.FromString(*p5str)
 	if !ok {
@@ -42,7 +31,12 @@ func main() {
 		return
 	}
 
-	cdc := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
 	if flag.NArg() != 1 {
 		fmt.Printf("Expecting file name\n");
 		return

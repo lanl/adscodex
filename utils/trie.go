@@ -19,7 +19,7 @@ type DistSeq struct {
 	Dist	int
 }
 
-func NewTrie(seqs []oligo.Oligo) (trie *Trie, err error) {
+func NewTrie(seqs []*Oligo) (trie *Trie, err error) {
 	trie = new(Trie)
 	trie.bp = math.MaxUint8
 	for _, seq := range seqs {

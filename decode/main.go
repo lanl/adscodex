@@ -8,37 +8,23 @@ import (
 	"runtime/pprof"
 	"acoma/oligo"
 	"acoma/oligo/long"
-	"acoma/l0"
 	"acoma/l1"
 	"acoma/l2"
-	"acoma/criteria"
 	"acoma/io/csv"
 	"acoma/io/fastq"
 )
 
-var dectbl = flag.String("dtbl", "../tbl/decnt17b7.tbl", "decoding lookup table")
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var profname = flag.String("prof", "", "profile filename")
 var ftype = flag.String("ftype", "csv", "input file type")
-var mdcsum = flag.String("mdcsum", "rs", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
+var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 
 func main() {
 	flag.Parse()
-
-	if *dectbl != "" {
-		err := l0.LoadDecodeTable(*dectbl, criteria.H4G2)
-		if err != nil {
-			fmt.Printf("error while loading decoding table:%s: %v\n", *dectbl, err)
-			return
-		}
-	}
-
-	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
-	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
 
 	p5, ok := long.FromString(*p5str)
 	if !ok {
@@ -52,7 +38,12 @@ func main() {
 		return
 	}
 
-	cdc := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
 	if flag.NArg() != 2 {
 		fmt.Printf("Expecting file name\n");
 		return
@@ -94,7 +85,6 @@ func main() {
 	}
 
 	var oligos []oligo.Oligo
-	var err error
 
 	switch (*ftype) {
 	default:

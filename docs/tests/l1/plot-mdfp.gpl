@@ -1,0 +1,15 @@
+set terminal pdf enhanced size 4 in, 2.5 in
+set output name.'-md-fp.pdf'
+
+set title "Metadata False Positive Rate"
+#set xrange [-0.01:1.02]
+set yrange [0:1]
+#set format x ""
+set ylabel "False Positive Rate"
+set xlabel "Probability of an error per position (%)"
+
+fname=name.".data"
+plot \
+	"< awk '$5 == 0 { print $0 }' ".fname using 6:8 with lines title "Level 0",\
+	"< awk '$5 == 1 { print $0 }' ".fname using 6:8 with lines title "Level 1",\
+	"< awk '$5 == 2 { print $0 }' ".fname using 6:8 with lines title "Level 2"

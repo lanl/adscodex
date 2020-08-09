@@ -1,0 +1,19 @@
+set terminal pdf enhanced size 4 in, 2.5 in
+set output name.'-data-err.pdf'
+
+set title "Data Error Rate"
+#set xrange [-0.01:1.02]
+set yrange [0:1]
+#set format x ""
+set ylabel "Error Rate"
+set xlabel "Probability of an error per position (%)"
+set key right bottom
+
+fname=name.".data"
+plot \
+	"< awk '$5 == 0 { print $0 }' ".fname using 6:($9+$10) with lines ls 1 title "Level 0",\
+	"< awk '$5 == 1 { print $0 }' ".fname using 6:($9+$10) with lines ls 2 title "Level 1",\
+	"< awk '$5 == 2 { print $0 }' ".fname using 6:($9+$10) with lines ls 3 title "Level 2",\
+	"< awk '$5 == 0 { print $0 }' ".fname using 6:9:($9+$10) with filledcurves ls 1 notitle,\
+	"< awk '$5 == 1 { print $0 }' ".fname using 6:9:($9+$10) with filledcurves ls 2 notitle,\
+	"< awk '$5 == 2 { print $0 }' ".fname using 6:9:($9+$10) with filledcurves ls 3 notitle,\

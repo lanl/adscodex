@@ -74,6 +74,22 @@ func String2Nt(nt string) int {
 	}
 }
 
+// Converts character value of a nt to its numeric value
+func Char2Nt(nt byte) int {
+	switch nt {
+	default:
+		return -1
+	case 'A':
+		return A
+	case 'T':
+		return T
+	case 'C':
+		return C
+	case 'G':
+		return G
+	}
+}
+
 // Calculates the GC content of an oligo. 
 // Returns a value between 0 (no GC) and 1.
 func GCcontent(o Oligo) float64 {
@@ -117,6 +133,47 @@ func Distance(a, b Oligo) int {
 	}
 
 	return f[len(f)-1]
+}
+
+// Match oligo to a pattern. Allows ? for matching any nt
+func Match(a Oligo, p string, maxdist int) bool {
+	b := make([]int, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == '?' {
+			b[i] = -1
+		} else {
+			b[i] = Char2Nt(p[i])
+			if b[i] == -1 {
+				return false
+			}
+		}
+	}
+
+	f := make([]int, len(b) + 1)
+	for j := range f {
+		f[j] = j
+	}
+
+	for n := 0; n < a.Len(); n++ {
+		ca := a.At(n)
+		j := 1
+		fj1 := f[0] // fj1 is the value of f[j - 1] in last iteration
+		f[0]++
+		for m := 0; m < len(b); m++ {
+			cb := b[m]
+			mn := min(f[j]+1, f[j-1]+1) // delete & insert
+			if cb != -1 && cb != ca {
+				mn = min(mn, fj1+1) // change
+			} else {
+				mn = min(mn, fj1) // matched
+			}
+
+			fj1, f[j] = f[j], mn // save f[j] to fj1(j is about to increase), update f[j] to mn
+			j++
+		}
+	}
+
+	return f[len(f)-1] <= maxdist
 }
 
 // Finds subsequence in a sequence, with up to maxdist errors allowed.

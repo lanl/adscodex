@@ -6,7 +6,7 @@ import (
 _	"os"
 	"math/rand"
 	"runtime"
-_	"time"
+	"time"
 	"acoma/oligo"
 	"acoma/oligo/long"
 	"acoma/l0"
@@ -24,6 +24,7 @@ var errate = flag.Float64("err", 1.0, "error rate (percent)")
 var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
 var seed = flag.Int64("s", 0, "random generator seed")
+var hdr = flag.Bool("hdr", false, "print the header and exit")
 
 type Stat struct {
 	count	int		// number of tests
@@ -32,8 +33,9 @@ type Stat struct {
 	dterr	int		// number of data errors
 	dtfp	int		// number of data false positive errors
 	errnum	int		// number of errors introduced in the oligos
+	dur	int64		// time in milliseconds to test
 }
-	
+
 var cdc *l1.Codec
 var p5, p3 oligo.Oligo
 
@@ -41,6 +43,12 @@ func main() {
 	var total Stat
 
 	flag.Parse()
+	if *hdr {
+		// make sure it's the same as the Printf below
+		fmt.Printf("# number-of-data-blocks metadata-block-size metadata-ec-num metadata-type difficulty error-rate metadata-errors metadata-false-positive data-errors data-false-positives average-errors average-time(ms)\n")
+		return
+	}
+
 	if err := initTest(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
@@ -59,15 +67,16 @@ func main() {
 		total.dterr += st.dterr
 		total.dtfp += st.dtfp
 		total.errnum += st.errnum
+		total.dur += st.dur
 	}
 
-	fmt.Printf("%d\n", total.count)
-	fmt.Printf("%d %d %d %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *errate,
+	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, *errate,
 		float64(total.mderr)/float64(total.count), 
 		float64(total.mdfp)/float64(total.count), 
 		float64(total.dterr)/float64(*dbnum * total.count),
 		float64(total.dtfp)/float64(*dbnum * total.count),
-		float64(total.errnum)/float64(total.count))
+		float64(total.errnum)/float64(total.count),
+		float64(total.dur)/float64(total.count))
 }
 
 func initTest() error {
@@ -126,6 +135,7 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		blks[i] = make([]byte, cdc.BlockSize())
 	}
 
+	t := time.Now()
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
 			for j := 0; j < len(blks[i]); j++ {
@@ -206,6 +216,8 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		}
 	}
 
+	d := time.Since(t)
 	st.count = niter
+	st.dur = d.Milliseconds()
 	ch <- st
 }

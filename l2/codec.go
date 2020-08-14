@@ -3,10 +3,12 @@ package l2
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"crypto/sha1"
 	"hash/crc64"
+_	"os"
 	"acoma/oligo"
 	"acoma/criteria"
 	"acoma/l0"
@@ -91,6 +93,10 @@ func (c *Codec) SetMetadataChecksum(cs int) error {
 // See the description of the appropriate function in the L1 code
 func (c *Codec) SetDataChecksum(cs int) error {
 	return c.c1.SetDataChecksum(cs)
+}
+
+func (c *Codec) MaxAddr() uint64 {
+	return c.c1.MaxAddr()
 }
 
 // Encodes logical data into a collection of oligos.
@@ -252,7 +258,7 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 			last = l
 		}
 
-		data = c.recoverData(start, last, doligos, eoligos)
+		data = c.recoverData(start, last + 1, doligos, eoligos)
 
 		{
 			var offset uint64
@@ -450,6 +456,7 @@ func (c *Codec) decodeOligos(start, end uint64, oligos []oligo.Oligo, doligos, e
 func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][]byte) (data []DataExtent) {
 	egrp := make([][][][]byte, c.dseqnum + c.rseqnum)
 	for a := start; a < end; a += uint64(c.dseqnum) {
+		var num int
 		for i := 0; i < c.dseqnum; i++ {
 			egrp[i] = doligos[a + uint64(i)]
 			if egrp[i] == nil {
@@ -458,6 +465,8 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][
 				for j := 0; j < c.dblknum; j++ {
 					egrp[i][j] = nil
 				}
+			} else {
+				num++
 			}
 		}
 
@@ -470,8 +479,15 @@ func (c *Codec) recoverData(start, end uint64, doligos, eoligos map[uint64][][][
 				for j := 0; j < c.dblknum; j++ {
 					egrp[n][j] = nil
 				}
+			} else {
+				num++
 			}
 		}
+
+		if num == 0 {
+			continue
+		}
+
 		ds := c.recoverECGroup(a * uint64(c.c1.DataLen()), egrp)
 			
 		// check if the first extent can be combined with the last one so far
@@ -697,20 +713,20 @@ copydata:
 			docopy := false
 			if verified {
 				if dvalid < nshards {
-					if dvalid != 0 {
-						fmt.Printf("offset %d: had %d shards, got better %d\n", offset, dvalid, nshards)
-						fmt.Printf("\told shards %v\n", savedshards)
-						fmt.Printf("\tnew shards %v\n", shards)
-					}
+//					if dvalid != 0 {
+//						fmt.Printf("offset %d: had %d shards, got better %d\n", offset, dvalid, nshards)
+//						fmt.Printf("\told shards %v\n", savedshards)
+//						fmt.Printf("\tnew shards %v\n", shards)
+//					}
 
 					docopy = true
 					dverified[n] = true
 					dvalid = nshards
 					copy(savedshards, shards)
 				} else {
-					fmt.Printf("offset %d: had %d shards, got same or worse %d\n", offset, dvalid, nshards)
-					fmt.Printf("\told shards %v\n", savedshards)
-					fmt.Printf("\tnew shards %v\n", shards)
+//					fmt.Printf("offset %d: had %d shards, got same or worse %d\n", offset, dvalid, nshards)
+//					fmt.Printf("\told shards %v\n", savedshards)
+//					fmt.Printf("\tnew shards %v\n", shards)
 				}
 			} else {
 				docopy = dvalid == 0
@@ -760,6 +776,86 @@ copydata:
 //	if debug {
 //		fmt.Printf("\tds %v\n", ds)
 //	}
+	return
+}
+
+// These functions are mostly for testing
+func (c *Codec) ECGSize() int {
+	return  c.c1.DataLen() * c.dseqnum
+}
+
+func (c *Codec) EncodeECG(addr uint64, data []byte) (ols []oligo.Oligo, err error) {
+	// copy/paste from Encode
+	blksz := c.c1.BlockSize()
+	blknum := c.c1.BlockNum()
+
+	if len(data) != blksz*blknum*c.dseqnum {
+		err = fmt.Errorf("invalid data size: %d expecting %d", len(data), blksz*blknum*c.dseqnum)
+		return
+	}
+
+	egrp := make([][][]byte, c.dseqnum + c.rseqnum)
+	for i := 0; i < len(egrp); i++ {
+		egrp[i] = make([][]byte, blknum)
+
+		// allocate memory for the data of the erasure sequences
+		if i >= c.dseqnum {
+			for j := 0; j < len(egrp[i]); j++ {
+				egrp[i][j] = make([]byte, blksz)
+			}
+		}
+	}
+
+	// populate the data blocks for an erasure group
+	for i := 0; i < c.dseqnum; i++ {
+		for j := 0; j < blknum; j++ {
+			egrp[i][j] = data[0:blksz]
+			data = data[blksz:]
+		}
+	}
+
+	// generate the data for the erasure oligos
+	err = c.generateErasures(egrp)
+	if err != nil {
+		return
+	}
+
+	// encode the data oligos for an erasure group
+	for i := 0; i < c.dseqnum; i++ {
+		var o oligo.Oligo
+
+		o, err = c.c1.Encode(c.p5, c.p3, addr + uint64(i), false, egrp[i])
+		if err != nil {
+			ols = nil
+			return
+		}
+
+		ols = append(ols, o)
+	}
+
+	// encode the erasure oligos for an erasure group
+	for i := 0; i < c.rseqnum; i++ {
+		var o oligo.Oligo
+
+		o, err = c.c1.Encode(c.p5, c.p3, addr + uint64(i), true, egrp[c.dseqnum + i])
+		if err != nil {
+			ols = nil
+			return
+		}
+
+		ols = append(ols, o)
+	}
+
+	return
+}
+
+func (c *Codec) DecodeECG(dfclty int, ols []oligo.Oligo) (data []DataExtent, failednum int) {
+	doligos := make(map[uint64] [][][]byte)	// data oligos (list per address)
+	eoligos := make(map[uint64] [][][]byte)	// erasure oligos (list per address)
+
+	l, failed := c.decodeOligos(0, math.MaxUint64, ols, doligos, eoligos, dfclty)
+	data = c.recoverData(0, l + 1, doligos, eoligos)
+	failednum = len(failed)
 	return
 }
 

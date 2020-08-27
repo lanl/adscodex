@@ -147,6 +147,7 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 	ecsz := cdc.ECGSize()
 	data := make([]byte, ecsz * *grpnum)
 	dpr := make([]bool, len(data))
+	olnum := uint64(*dseqnum * *grpnum)
 
 	t := time.Now()
 	for n := 0; n < niter; n++ {
@@ -156,7 +157,7 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 			data[i] = byte(rnd.Intn(256))
 		}
 
-		addr := uint64(rand.Int63n(int64(cdc.MaxAddr() - 1)))
+		addr := uint64(rand.Int63n(int64(cdc.MaxAddr() - olnum)))
 		addr -= addr%uint64(*dseqnum)						// make sure the oligos are aligned and are a single ECG
 
 		for i := 0; i < *grpnum; i++ {

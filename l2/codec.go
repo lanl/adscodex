@@ -724,6 +724,7 @@ copydata:
 					dvalid = nshards
 					copy(savedshards, shards)
 				} else {
+					dverified[n] = false
 //					fmt.Printf("offset %d: had %d shards, got same or worse %d\n", offset, dvalid, nshards)
 //					fmt.Printf("\told shards %v\n", savedshards)
 //					fmt.Printf("\tnew shards %v\n", shards)

@@ -18,6 +18,7 @@ var pdist = flag.Int("pdist", 3, "primer match distance")
 var mdist = flag.Int("maxdist", 64, "maximum distance for matching")
 var p5 = flag.String("p5", "", "5'-end primer")
 var p3 = flag.String("p3", "", "3'-end primer")
+var ftype = flag.String("ft", "fastq", "input file type")
 
 type Match struct {
 	oligo	oligo.Oligo		// the original oligo from the synthesis file
@@ -54,7 +55,6 @@ func main() {
 		return
 	}
 
-	
 	dspool, err := utils.ReadPool([]string { *datasetFile }, false, csv.Parse)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -67,7 +67,17 @@ func main() {
 	}
 
 	fmt.Fprintf(os.Stderr, "Reading data\n")
-	pool, err := utils.ReadPool(fnames, true, fastq.Parse)
+	parse := fastq.Parse
+	switch (*ftype) {
+	default:
+		fmt.Fprintf(os.Stderr, "Error: invalid input file type: %s\n", *ftype)
+	case "csv":
+		parse = csv.Parse
+
+	case "fastq":
+	}
+
+	pool, err := utils.ReadPool(fnames, true, parse)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
@@ -81,6 +91,7 @@ func main() {
 	dspool.InitSearch()
 
 	// find matches for each oligo in the dataset
+	fmt.Fprintf(os.Stderr, "Matching %d reads to %d oligos...\n", pool.Size(), dspool.Size())
 	ch := make(chan []*Match)
 	nprocs := pool.Parallel(1024, func (ols []*utils.Oligo) {
 		var ret []*Match

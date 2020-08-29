@@ -12,6 +12,7 @@ _	"os"
 	"acoma/l0"
 	"acoma/l1"
 	"acoma/criteria"
+	"acoma/utils/errmdl/simple"
 )
 
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")
@@ -38,6 +39,8 @@ type Stat struct {
 
 var cdc *l1.Codec
 var p5, p3 oligo.Oligo
+var em *simple.SimpleErrorModel
+var rndseed int64
 
 func main() {
 	var total Stat
@@ -122,72 +125,42 @@ func initTest() error {
 		err = cdc.SetDataChecksum(l1.CSumEven)
 	}
 
+	em = simple.New(*errate/100, *errate/100, *errate/100, 0.8, *seed)
+	if *seed == 0 {
+		rndseed = time.Now().UnixNano()
+	} else {
+		rndseed = *seed
+	}
+
 	return err
 }
 
 func runtest(rseed int64, niter int, ch chan Stat) {
 	var st Stat
 
-	rnd := rand.New(rand.NewSource(rseed))
-
 	blks := make([][]byte, cdc.BlockNum())
 	for i := 0; i < len(blks); i++ {
 		blks[i] = make([]byte, cdc.BlockSize())
 	}
 
+	rnd := rand.New(rand.NewSource(rndseed))
 	t := time.Now()
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
 			for j := 0; j < len(blks[i]); j++ {
-				blks[i][j] = byte(rand.Intn(256))
+				blks[i][j] = byte(rnd.Intn(256))
 			}
 		}
 
-		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))
+		addr := uint64(rnd.Intn(int(cdc.MaxAddr() - 2)))
 		ec := n%2 == 0
 		ol, err := cdc.Encode(p5, p3, addr, ec, blks)
 		if err != nil {
 			panic(fmt.Sprintf("error while encoding: %v\n", err))
 		}
 
-		// add some errors
-		seq := ol.String()
-		for i := 0; i < len(seq); i++ {
-			p := rnd.Float32() * 100
-			if float64(p) >= *errate {
-				continue
-			}
-
-			switch rnd.Intn(3) {
-			case 0:
-				// delete
-				if i+1 < len(seq) {
-					seq = seq[0:i] + seq[i+1:]
-				} else {
-					seq = seq[0:i]
-				}
-				i--
-
-			case 1:
-				// insert
-				seq = seq[0:i] + oligo.Nt2String(rnd.Intn(4)) + seq[i:]
-				i++
-
-			case 2:
-				// replace
-				var r string
-
-				if i+1 < len(seq) {
-					r = seq[i+1:]
-				}
-
-				seq = seq[0:i] + oligo.Nt2String(rnd.Intn(4)) + r
-			}
-
-			st.errnum++
-		}
-
-		eol, _ := long.FromString(seq)
+		eol, en := em.GenOne(ol)
+		st.errnum += en
 		
 		daddr, dec, data, err := cdc.Decode(p5, p3, eol, *dfclty)
 		if err != nil {

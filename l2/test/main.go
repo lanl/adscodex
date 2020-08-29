@@ -13,6 +13,7 @@ _	"os"
 	"acoma/l1"
 	"acoma/l2"
 	"acoma/criteria"
+	"acoma/utils/errmdl/simple"
 )
 
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos in an erasure group")
@@ -23,7 +24,10 @@ var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
 var dtctype = flag.String("dtctype", "parity", "data error detection type (parity or even)")
 var iternum = flag.Int("iternum", 1000, "number of iterations")
-var errate = flag.Float64("err", 1.0, "error rate (percent)")
+var ierrate = flag.Float64("ierr", 1.0, "error rate (percent)")
+var derrate = flag.Float64("derr", 1.0, "error rate (percent)")
+var serrate = flag.Float64("serr", 1.0, "error rate (percent)")
+var prob = flag.Float64("prob", 0.8,  "probability for negative binomial distribution")
 var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
 var seed = flag.Int64("s", 0, "random generator seed")
@@ -46,6 +50,8 @@ type Stat struct {
 }
 
 var cdc *l2.Codec
+var errmdl *simple.SimpleErrorModel
+var rndseed int64
 
 func main() {
 	var total Stat
@@ -82,7 +88,7 @@ func main() {
 		total.errnum += st.errnum
 	}
 
-	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dseqnum, *eseqnum, *dfclty, *errate,
+	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dseqnum, *eseqnum, *dfclty, *ierrate + *derrate + *derrate,
 		float64(total.versz)/float64(total.size),
 		float64(total.uversz)/float64(total.size),
 		float64(total.holesz)/float64(total.size),
@@ -136,19 +142,34 @@ func initTest() error {
 		err = cdc.SetDataChecksum(l1.CSumEven)
 	}
 
+	if err != nil {
+		return err
+	}
+
+	if *ierrate + *derrate + *serrate > 100 {
+		err = fmt.Errorf("Total error rate can't be more than 100%%\n")
+	}
+
+	errmdl = simple.New(*ierrate/100, *derrate/100, *serrate/100, *prob, *seed)
+
+	if *seed == 0 {
+		rndseed = time.Now().UnixNano()
+	} else {
+		rndseed = *seed
+	}
+
 	return err
 }
 
 func runtest(rseed int64, niter int, ch chan Stat) {
 	var st Stat
 
-	rnd := rand.New(rand.NewSource(rseed))
-
 	ecsz := cdc.ECGSize()
 	data := make([]byte, ecsz * *grpnum)
 	dpr := make([]bool, len(data))
 	olnum := uint64(*dseqnum * *grpnum)
 
+	rnd := rand.New(rand.NewSource(rndseed))
 	t := time.Now()
 	for n := 0; n < niter; n++ {
 		var ols []oligo.Oligo
@@ -157,7 +178,7 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 			data[i] = byte(rnd.Intn(256))
 		}
 
-		addr := uint64(rand.Int63n(int64(cdc.MaxAddr() - olnum)))
+		addr := uint64(rnd.Int63n(int64(cdc.MaxAddr() - olnum)))
 		addr -= addr%uint64(*dseqnum)						// make sure the oligos are aligned and are a single ECG
 
 		for i := 0; i < *grpnum; i++ {
@@ -170,56 +191,11 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		}
 
 		// add some errors
-		var nols []oligo.Oligo
-		for i := 0; i < *depth * len(ols); i++ {
-//		for i, ol := range ols {
-			ol := ols[rnd.Int31n(int32(len(ols)))]
-			seq := ol.String()
-			for i := 0; i < len(seq); i++ {
-				p := rnd.Float32() * 100
-				if float64(p) >= *errate {
-					continue
-				}
+		nols, nerr := errmdl.GenMany(*depth * len(ols), ols)
+		st.errnum += nerr
+		st.readnum += len(nols)
 
-				switch rnd.Intn(3) {
-				case 0:
-					// delete
-					if i+1 < len(seq) {
-						seq = seq[0:i] + seq[i+1:]
-					} else {
-						seq = seq[0:i]
-					}
-					i--
-
-				case 1:
-					// insert
-					seq = seq[0:i] + oligo.Nt2String(rnd.Intn(4)) + seq[i:]
-					i++
-
-				case 2:
-					// replace
-					var r string
-
-					if i+1 < len(seq) {
-						r = seq[i+1:]
-					}
-
-					seq = seq[0:i] + oligo.Nt2String(rnd.Intn(4)) + r
-				}
-
-				st.errnum++
-			}
-
-			eol, _ := long.FromString(seq)
-
-			nols = append(nols, eol)
-			st.readnum++
-		}
-
-//		fmt.Printf("ols %v\n", ols)
 		dss, _ := cdc.DecodeECG(*dfclty, nols)
-//		fmt.Printf("dss %v\n", dss)
-
 		for i := 0; i < len(dpr); i++ {
 			dpr[i] = false
 		}

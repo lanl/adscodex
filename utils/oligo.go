@@ -228,3 +228,12 @@ func (o *Oligo) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) oligo.Olig
 
 	return o.Slice(ppos, spos)
 }
+
+func ToOligoArray(uols []*Oligo) (ret []oligo.Oligo) {
+	ret = make([]oligo.Oligo, len(uols))
+	for i, o := range uols {
+		ret[i] = o
+	}
+
+	return
+}

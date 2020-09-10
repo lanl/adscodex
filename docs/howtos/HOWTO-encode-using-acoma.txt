@@ -1,0 +1,120 @@
+Howto use ACOMA to encode a file into a set of oligos on a Macbook pro 
+and a linux system. After following the steps below you will have 
+produced a number of oligos that represent a given file with added redundancy.
+
+We will utilize the go run process for running our tools since we will be potentially
+modifying src code and then running.
+
+Assumptions:
+   -bash shell
+   -17nt datablock size
+   -You have followed HOWTO-setup-go-and-acoma.txt to verify
+    a working go and acoma install
+   -ALTGOPATH points to a path where acoma is installed
+   -an encode table exists with 17nt oligos and enough entries to facilitate
+    encoding the desired file
+
+--
+
+1. Create an input file and verify contents
+
+   1.1 Use the dd command to create a new file with random content:
+
+         dd if=/dev/urandom of=$HOME/32kfilerand bs=16k count=2
+
+   1.2 Determine md5sum of file and save to compare against later:
+
+         md5sum $HOME/32kfilerand >> $HOME/checksum_32kfilerand
+
+   1.3 Check size of file to ensure accuracy (especially if you are not creating it
+       like above)
+
+         stat $HOME/32kfilerand >> $HOME/statof_32kfilerand
+
+2. Plan for oligo length and adjust parameters accordingly
+
+   2.1 17nt is datablock size, this is hardcoded in many places of ACOMA and results
+       in a 32bit usable block size.
+
+
+   2.2 Determine number of data blocks the oligo will contain. This will impact the number 
+       of metadata blocks an oligo contains as well. For this exercise we choose the default
+       of 5 datablocks per oligo. This is currently hardcoded in the file:
+       
+       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 3rd parameter 
+       of the function "l2.NewCodec"
+
+       Current oligo length is: 17nt/datablock * 5datablocks/oligo = 85nt/oligo
+
+   2.3 Determine the number of Reed-Solomon metadata erasure blocks that the 
+       oligo will contain. This is used to protect against errors in MD blocks. 
+       It will impact the number of metadata blocks an oligo can hold. Metadata erasure 
+       blocks are 5nt in size. We will choose the default of 2 for this exercise. 
+       If you would like to modify this value, it is in the file:
+       
+       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 5th parameter
+       of the function "l2.NewCodec" 
+
+       Current oligo length is: 85 + 5nt/MD_RS * 2MD_RS/oligo = 95nt/oligo
+
+   2.4 Determine the sizeof a metadata block. ACOMA currently supports either 3, 4, or 5nt
+       metadata blocks. As described in the ACOMA design docs, the amount of addressable
+       space is governed by number of datablocks, number of RS metadata blocks, and sizeof
+       metadata blocks. We will choose the default of 4nt metadatablock size. If you would
+       like to modify this value, it is in the file:
+
+       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 4th parameter
+       of the function "l2.NewCodec"
+
+       With our current chosen parameters, we are able to address up to 1608714 addresses
+       or ~30MB. This is plenty for our 32KiB sample file.
+
+       Current oligo length is: 95 + 4nt/MD * (#datablocks <5> - #RSMD_blocks <2>) = 107nt 
+      
+
+3. Plan for erasure protection amongst oligo groups
+
+   3.1 Determine the number of data oligos in an erasure group. The default value is 3.
+       This can be modified as a parameter passed into the encode/main.go tool as
+
+       -dseqnum <val>
+
+
+   3.2 Determine the number of erasure oligos per erasure group. This is the added
+       redundancy for the data oligos. The default value is 2. This can be modified as a
+       parameter passed into the encode/main.go tool as:
+
+       -rseqnum <val>
+
+   3.3 These values impact the total number of oligos produced and the amount of error
+       protection included by the codec
+
+4. Choose primers or other sequences desired for the 3' or 5'-end
+
+   4.1 3'-end primer can be set to empty string if desired. The default primer is 20nt 
+       and can be found using the --help option to encode/main.go. We will use the default, 
+       but it is specified by using the -p3 parameter when running the encode tool. 
+
+   4.2 Currently the 5'-end primer must be at least 4nt. The default primer is 20nt and 
+       can be found using the --help option to encode/main.go. We will use the default,
+       but it is specified by using the -p5 parameter when running the encode tool.
+
+   Using the two default primers, we will find that our total oligo length is: 147nt
+
+5. Put it all together to encode our test file
+
+   5.1 The above changes to src code (if applicable) should have already been made before
+       continuing beyond this step.
+
+   5.2 Run encoder tool, redirecting output to a file to store oligos:
+
+         cd ALTGOPATH/src/acoma/
+         go run encode/main.go -dseqnum 3 -rseqnum 2 -etbl tbl/encnt17b13.tbl \
+            -p3 CAGTGAGCTGGCAACTTCCA -p5 CGACATCTCGATGGCAGCAT $HOME/32kfilerand >> dna.out
+
+6. Quick sanity checks
+
+   6.1 You can check for oligo count using wc. Note: there is an empty line at the beginning
+       of the file. It is also worthwhile to verify oligo length.
+
+   6.2 Congratulations these oligos represent the sample file.

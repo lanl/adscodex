@@ -1,0 +1,138 @@
+Howto setup go and acoma on a Macbook pro and a linux system. After following
+the steps below you will have go installed and acoma src code in a place that
+go will recognize and be able to run. 
+
+Assumptions:
+   -bash shell
+   -17nt is datablock size
+
+--
+
+1. Install GO
+   
+   1.1 Navigate to: https://golang.org/doc/install
+       Follow instructions related to your system
+       (img file download for mac, src or package file install linux
+        plus some follow-on steps)
+
+   1.2 You should now be able to run:
+
+       go version
+
+
+2. Create a go path for development
+
+   2.1 By default go will setup a go directory in $HOME
+       this is generally useful for installing modules with
+       "go get" but it is best to have another area for development
+       replace "/mnt/nvme0n1/user/" with some other path you prefer
+       this and other docs will refer to this as ALTGOPATH from now on 
+       
+         mkdir /mnt/nvme0n1/user/go
+         mkdir /mnt/nvme0n1/user/go/src
+         mkdir /mnt/nvme0n1/user/go/pkg
+  
+   2.2 Add ALTGOPATH to your GOPATH env variable:
+
+         export GOPATH=$(go env GOPATH):ALTGOPATH
+
+       You can test to see the new value:
+
+         go env GOPATH
+
+       You probably want to add this to your .bashrc
+
+3. Download ACOMA
+
+   3.1 Use git to download a copy of ACOMA src into ALTGOPATH/src/acoma
+
+         git clone https://github.com/lanl/acoma.git ALTGOPATH/src/acoma
+
+   3.2 Checkout the appropriate tag or branch:
+
+         cd ALTGOPATH/src/acoma
+         git checkout v0.9
+
+
+4. Download ACOMA dependencies
+
+   4.1 ACOMA depends on the Reed-Solomon package. It will be installed into $HOME/go/pkg
+       
+         go get -u github.com/klauspost/reedsolomon
+
+
+5. Sanity run of ACOMA
+
+   5.1 You should now be able to run an ACOMA help command. This will dump available opts
+       for ACOMA encode:
+
+         cd ALTGOPATH/src/acoma
+         go run encode/main.go --help
+
+
+   5.2 Run an ACOMA unit test to confirm correct install, you can run l0 test without
+       creating lookup tables:
+
+         cd ALTGOPATH/src/acoma/l0/
+         go test
+
+6. Download or generate required lookup tables for faster encode/decode
+
+   6.1 Rather than generating the tables yourself, you can download pre-built
+       tables from the ACOMA github page. You can skip to step 6.2 if you wish
+       to generate the tables yourself. The zip file is ~1.7GB:
+
+         wget https://github.com/lanl/acoma/releases/download/v0.9/tables.zip
+
+      If this link gives you trouble, you can navigate to:
+
+         https://github.com/lanl/acoma/releases
+
+   6.2 After unzipping place the .tbl files into the tbl directory
+
+         cd ALTGOPATH/src/acoma
+         mkdir tbl
+         mv *.tbl tbl/
+         
+       Skip to step 6.4
+
+   6.2 Generate encode table for 17nt data blocks. To save time for later, it is best to
+       generate larger tables, but you may specify the number of entries. This can take a
+       hour or more to run depending on number of entries.
+
+         cd ALTGOPATH/src/acoma/
+         mkdir tbl
+         go run tblgen/main.go -e tbl/encnt17b13.tbl -l 17 -b 13
+         < 
+           -e represents table name 
+           -l is length of nt for a single datablock
+           -b represents power of two entries (2^13 entries in example above)
+         >
+
+   6.3 Generate decode table for 17nt data blocks. Similarly, it is best to generate a
+       larger table and do this operation once. It may take hour(s) for this to complete.
+
+         cd ALTOGOPATH/src/acoma/
+         go run tblgen/main.go -d tbl/dent17b7.tbl -l 17 -b 7
+         <
+           -e represents table name
+           -l is length of nt for a single datablock
+           -b represents power of two entries, but is doubled before being used
+              (using 7 above would result in 2^14 entries)
+         >
+
+   6.4 Run l1 and l2 tests. If you created the two tables identical to above, you will be
+       able to run the tests without modification. If you named the tables differently 
+       you will need to modify each test to use the tables that you have created. 
+       The test files can be found in each module directory <l1,l2> and are named
+       "codec_test.go"
+ 
+       Run the test:
+
+         cd ALTGOPATH/src/acoma/l1
+         go test
+
+         cd ALTGOPATH/src/acoma/l2
+         go test
+
+You now have a working go and acoma installation.

@@ -1,0 +1,116 @@
+Howto use ACOMA to decode a set of oligos into data they represent on a Macbook pro 
+and a linux system. After following the steps below you will have produced a file
+containing the data that was previously encoded into oligos.
+
+We will utilize the go run process for running our tools since we will be potentially
+modifying src code and then running.
+
+Assumptions:
+   -bash shell
+   -17nt datablock size
+   -You have followed HOWTO-setup-go-and-acoma.txt to verify
+    a working go and acoma install
+   -You have followed HOWTO-encode-using-acoma.txt to generate the set of oligos
+    that you are trying to decode.
+   -ALTGOPATH points to a path where acoma is installed
+   -a decode table exists with 17nt oligos and enough entries to facilitate
+    decoding the desired oligos
+
+--
+
+1. Post-process the FASTQ file, so that we are only left with oligos
+
+   1.1 If the file is compressed use zcat, otherwise you can awk directly
+       (note: some systems require the use of gzcat. this will be obvious
+              if you get a "No such file or dir" error with a .fastq.gz.Z)
+
+         zcat *.fastq.gz | awk 'NR%4==2’ > $HOME/seqs.txt
+
+   1.2 If possible to remove duplicate oligos, this will speed up the decoding
+       significantly. Otherwise, it will affect decoding results to have duplicates.
+
+
+2. Edit decoding tool to utilize the parameters that were used when encoding the data
+
+   2.1 17nt is datablock size, this is hardcoded in many places of ACOMA and results
+       in a 32bit usable block size.
+
+
+   2.2 Set the number of data blocks the oligo contains.
+       For this exercise we chose the default of 5 datablocks per oligo.
+       This is currently hardcoded in the file:
+       
+       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 3rd parameter 
+       of the function "l2.NewCodec"
+
+
+   2.3 Set the number of Reed-Solomon metadata erasure blocks that the 
+       oligo contains. 
+       We chose the default of 2 for this exercise. 
+       If you need to modify this value, it is in the file:
+       
+       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 5th parameter
+       of the function "l2.NewCodec" 
+
+   2.4 Set the sizeof a metadata block. 
+       We chose the default of 4nt metadatablock size.
+       If you need to modify this vlaue, it is in the file:
+
+       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 4th parameter
+       of the function "l2.NewCodec"
+
+
+3. Get the values used for erasure protection amongst oligo groups
+
+   3.1 Obtain the value used for number of data oligos per erasure group. (def 3)
+       In our encoding example we used the default of 3.
+       This can be modified as a parameter passed into the decode/main.go tool as
+
+       -dseqnum <val>
+
+
+   3.2 Obtain the number of erasure oligos per erasure group. (def 2)
+       In our encoding example we used the default of 2. 
+       This can be modified as a parameter passed into the decode/main.go tool as:
+
+       -rseqnum <val>
+
+4. Determine the primers or other sequences used for the 3' or 5'-end
+
+   4.1 3'-end primer can be set to empty string if desired. 
+       Specify this using the -p3 string flag to decode/main.go
+
+       -p3 CAGTGAGCTGGCAACTTCCA
+
+   4.2 Currently the 5'-end primer must be at least 4nt. 
+       Specify this using the -p5 string flag to decode/main.go
+
+      -p5 CGACATCTCGATGGCAGCAT
+
+
+5. Put it all together to decode the oligos
+
+   5.1 The above changes to src code (if applicable) should have already been made before
+       continuing beyond this step.
+
+   5.2 Run decoder tool passing in all parameters, then last two options should be
+       input file that is oligos separate by newline and output file name for data
+       to be placed inside: 
+
+         cd ALTGOPATH/src/acoma/
+         go run decode/main.go -dseqnum 3 -rseqnum 2 -dtbl tbl/decnt17b7.tbl \
+            -p3 CAGTGAGCTGGCAACTTCCA -p5 CGACATCTCGATGGCAGCAT $HOME/seqs.txt $HOME/decoded.file
+   
+   5.3 A successful decode will produce no output and you will have a decoded file generated
+       If ACOMA determines there are holes in the file, it will print an error message
+       to the terminal.
+
+6. Sanity checks
+
+   6.1 Check the size of your newly decoded.file to see how it compares to the file that
+       was encoded.
+
+   6.2 Check the md5sum of the newly decoded.file to see if it matches the original data
+       file. 
+
+       md5sum $HOME/decoded.file

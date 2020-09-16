@@ -47,7 +47,7 @@ type Codec struct {
 }
 
 
-var Eprimer = errors.New("primer mistmatch")
+var Eprimer = errors.New("primer mismatch")
 var Emetadata = errors.New("can't recover metadata")
 
 var maxvals = []int {
@@ -225,16 +225,19 @@ func (c *Codec) mdcsumLen() (n int) {
 // instead of data data).
 func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, data [][]byte) (o oligo.Oligo, err error) {
 	o, err = c.encode(p5, p3, address, ef, false, data)
-	if err == nil && oligo.GCcontent(o) > 0.6 {
+	if err != nil {
+		return
+	}
+
+	if gc := oligo.GCcontent(o); gc > 0.6 {
 		var o1 oligo.Oligo
 
 		o1, err = c.encode(p5, p3, address, ef, true, data)
-		if err == nil {
-			if oligo.GCcontent(o1) > 0.6 {
-				// FIXME: should we just pick the one that has lower content?
-				panic("both high GC content")
-			}
+		if err != nil {
+			return
+		}
 
+		if gc1 := oligo.GCcontent(o1); gc1 < gc {
 			o = o1
 		}
 	}
@@ -516,8 +519,8 @@ func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 		return
 	}
 
-	pos3, len3 := oligo.Find(ol, p3, PrimerErrors)
-	if pos3 < 0 || pos3+len3 != ol.Len() {
+	pos3, _/*len3*/ := oligo.Find(ol, p3, PrimerErrors)
+	if pos3 < 0 /*|| pos3+len3 != ol.Len()*/ {
 		err = Eprimer
 		return
 	}

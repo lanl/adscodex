@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"acoma/oligo/long"
 	"acoma/l1"
@@ -11,10 +12,16 @@ import (
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
+var dbnum = flag.Int("dbnum", 5, "number of data blocks")
+var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
+var compat = flag.Bool("compat", false, "compatibility with 0.9")
+var rndomize = flag.Bool("rndmz", false, "randomze data")
+var shuffle = flag.Int("shuffle", 0, "random seed for shuffling the order of the oligos (0 disable)")
 
 func main() {
 	flag.Parse()
@@ -31,11 +38,12 @@ func main() {
 		return
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	cdc.SetCompat(*compat)
 
 	if flag.NArg() != 1 {
 		fmt.Printf("Expecting file name\n");
@@ -77,6 +85,8 @@ func main() {
 		return
 	}
 
+	cdc.SetRandomize(*rndomize)
+
 	f, err := os.Open(flag.Arg(0))
 	if err != nil {
 		fmt.Printf("Error opening the file: %v\n", err)
@@ -100,6 +110,13 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error while encoding: %v\n", err)
 		return
+	}
+
+	if *shuffle != 0 {
+		rand.Seed(int64(*shuffle))
+		rand.Shuffle(len(oligos),  func (i, j int) {
+			oligos[i], oligos[j] = oligos[j], oligos[i]
+		})
 	}
 
 	for i, ol := range oligos {

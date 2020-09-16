@@ -16,12 +16,17 @@ import (
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
+var dbnum = flag.Int("dbnum", 5, "number of data blocks")
+var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var profname = flag.String("prof", "", "profile filename")
 var ftype = flag.String("ftype", "csv", "input file type")
 var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
+var compat = flag.Bool("compat", false, "compatibility with 0.9")
+var rndomize = flag.Bool("rndmz", false, "randomze data")
 
 func main() {
 	flag.Parse()
@@ -38,11 +43,12 @@ func main() {
 		return
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, 5, 4, 2, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	cdc.SetCompat(*compat)
 
 	if flag.NArg() != 2 {
 		fmt.Printf("Expecting file name\n");
@@ -83,6 +89,7 @@ func main() {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	cdc.SetRandomize(*rndomize)
 
 	var oligos []oligo.Oligo
 
@@ -126,6 +133,7 @@ func main() {
 
 	for i := 0; i < len(data); i++ {
 		d := &data[i]
+		fmt.Printf("%d: %d verified %v\n", d.Offset, len(d.Data), d.Verified)
 		of.Seek(int64(d.Offset), 0)
 		of.Write(d.Data)
 	}

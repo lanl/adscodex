@@ -22,7 +22,7 @@ func FromString(s string, qubu []float64) (o *Oligo, ok bool) {
 		return
 	}
 
-	if qubu != nil {
+	if len(qubu) != 0 {
 		if o.ol.Len() != len(qubu) {
 			o = nil
 			return
@@ -57,10 +57,18 @@ func Copy(o oligo.Oligo) (ret *Oligo, ok bool) {
 
 // oligo.Oligo interface functions
 func (o *Oligo) Len() int {
+	if o == nil {
+		return 0
+	}
+
 	return o.ol.Len()
 }
 
 func (o *Oligo) String() string {
+	if o == nil {
+		return ""
+	}
+
 	return o.ol.String()
 }
 

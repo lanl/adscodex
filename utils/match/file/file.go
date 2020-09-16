@@ -5,6 +5,7 @@ import (
 _	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"acoma/oligo"
@@ -13,6 +14,7 @@ _	"acoma/utils"
 )
 
 type Match struct {
+	id	int
 	Orig	oligo.Oligo	// original oligo from the dataset
 	Read	oligo.Oligo	// the read that is matched to it
 	Count	int		// number of reads
@@ -150,5 +152,37 @@ func Parse(fname string, process func(id, count int, diff string, cubu float64, 
 		process(id, count, diff, cubu, orig, read)
 		n++
 	}
+	return
+}
+
+func ParseParallel(fname string, numprocs int, process func(id, count int, diff string, cubu float64, orig, read oligo.Oligo)) (err error) {
+	if numprocs == 0 {
+		numprocs = runtime.NumCPU()
+	}
+
+	ch := make(chan *Match)
+	// start up the goroutines
+	for i := 0; i < numprocs; i++ {
+		go func() {
+			for  {
+				m := <-ch
+				if m == nil {
+					return
+				}
+
+				process(m.id, m.Count, m.Diff, m.Cubu, m.Orig, m.Read)
+			}
+		}()
+	}
+
+	err = Parse(fname, func(id, count int, diff string, cubu float64, orig, read oligo.Oligo) {
+		ch <- &Match{id, orig, read, count, cubu, diff}
+	})
+
+	// wind down the goroutines
+	for i := 0; i < numprocs; i++ {
+		ch <- nil
+	}
+
 	return
 }

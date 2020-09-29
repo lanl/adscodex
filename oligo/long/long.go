@@ -196,3 +196,7 @@ func (o *Oligo) Append(other oligo.Oligo) bool {
 
 	return true
 }
+
+func (o *Oligo) Bytes() []byte {
+	return o.seq
+}

@@ -768,6 +768,12 @@ func (f *File) recoverproc() {
 				cmpl = cmpl && cm
 			}
 		}
+
+		if cmpl {
+			f.Lock()
+			f.complete = true
+			f.Unlock()
+		}
 	}
 
 	f.closech <- true

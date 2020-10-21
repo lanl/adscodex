@@ -106,6 +106,7 @@ func (o *Oligo) Slice(start, end int) oligo.Oligo {
 
 	ol := new(Oligo)
 	ol.ol = o.ol.Slice(start, end)
+	ol.count = o.count
 
 	if o.qubund != nil {
 		ol.qubund = make([]float64, ol.ol.Len())
@@ -235,6 +236,10 @@ func (o *Oligo) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) oligo.Olig
 	}
 
 	return o.Slice(ppos, spos)
+}
+
+func (o *Oligo) Oligo() oligo.Oligo {
+	return o.ol
 }
 
 func ToOligoArray(uols []*Oligo) (ret []oligo.Oligo) {

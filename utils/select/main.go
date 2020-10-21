@@ -80,6 +80,8 @@ func main() {
 	}
 
 	fmt.Fprintf(os.Stderr, "Distance: %d Primer distance: %d\n", *dist, *pdist)
+//	fmt.Fprintf(os.Stderr, "5'-end: %v\n", pr5)
+//	fmt.Fprintf(os.Stderr, "3'-end: %v\n", pr3)
 	umap = make(map[string] *utils.Oligo)
 	ch := make(chan Seq, 20)
 	ech := make(chan bool)
@@ -183,11 +185,12 @@ func seqproc(ch chan Seq, ech chan bool) {
 			ol.Invert()
 		}
 
-		tol := ol.Trim(pr5, pr3, *pdist, true)
-		if tol == nil {
+		tol1 := ol.Trim(pr5, pr3, *pdist, true)
+		if tol1 == nil {
 			continue
 		}
 
+		tol := tol1.(*utils.Oligo)
 		if *oligolen != 0 {
 			tlen := float64(tol.Len())
 			olen := float64(*oligolen)
@@ -206,9 +209,9 @@ func seqproc(ch chan Seq, ech chan bool) {
 		if *unique {
 			ulock.Lock()
 			if o, ok := umap[ss]; ok {
-				o.Inc(ol.Count(), ol.Qubundances())
+				o.Inc(tol.Count(), tol.Qubundances())
 			} else {
-				umap[ss] = ol
+				umap[ss] = tol
 			}
 			ulock.Unlock()
 		} else {

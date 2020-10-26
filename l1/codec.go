@@ -18,6 +18,7 @@ const (
 
 const (
 	dblkSize = 17		// data block size
+	dblkMaxval = 2<<33
 )
 
 const (
@@ -465,6 +466,10 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 }
 
 func (c *Codec) checkDataBlock(dblk uint64) (ok bool, data []byte) {
+	if dblk >= dblkMaxval {
+		return false, nil
+	}
+
 	pbit := int(dblk & 1)
 	dblk >>= 1
 
@@ -548,6 +553,11 @@ func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 
 		mdblks[i], e = l0.Decode(mdpfx, mdol, c.crit)
 		if e != nil {
+			mdok = false
+			break
+		}
+
+		if mdblks[i] >= uint64(maxvals[c.mdsz]) {
 			mdok = false
 			break
 		}

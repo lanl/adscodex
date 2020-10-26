@@ -245,7 +245,7 @@ func (c *Codec) tryIt(idx int, prefix, mdol, ol oligo.Oligo, olen int, mdblks []
 	// some common sense checks: if md is larger than the maximum value we
 	// store per md block, it's probably wrong
 	if idx < c.blknum - c.rsnum {
-		if md > uint64(maxvals[c.mdsz]) {
+		if md >= uint64(maxvals[c.mdsz]) {
 			return -1
 		}
 	}

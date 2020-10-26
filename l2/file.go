@@ -702,8 +702,10 @@ func (f *File) recoverproc() {
 						tsz = fsz
 					}
 
-					fmt.Fprintf(os.Stderr, "try to recover file footer\n")
-					sz, sha1 = f.readSuper(tsz - superSize)
+					if tsz != 0 {
+						fmt.Fprintf(os.Stderr, "try to recover file footer\n")
+						sz, sha1 = f.readSuper(tsz - superSize)
+					}
 				}
 
 				if sha1 != nil {

@@ -2,7 +2,9 @@ package csv
 
 import (
         "bufio"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"acoma/oligo"
@@ -36,13 +38,21 @@ func Read(fname string, ignoreBad bool) ([]oligo.Oligo, error) {
 }
 
 func Parse(fname string, process func(id, sequence string, quality []byte, reverse bool) error) error {
+	var r io.Reader
+
 	f, err := os.Open(fname)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	sc := bufio.NewScanner(f)
+	if cf, err := gzip.NewReader(f); err == nil {
+		r = cf
+	} else {
+		r = f
+	}
+
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		var seq string
 

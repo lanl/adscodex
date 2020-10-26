@@ -35,6 +35,7 @@ var dspool *utils.Pool
 var ulock sync.Mutex
 var umap map[string]*utils.Oligo
 var total, selected, prcount uint64
+var dsmap map[string]bool
 
 func main() {
 
@@ -76,6 +77,7 @@ func main() {
 			return
 		}
 
+		dsmap = make(map[string]bool)
 		fmt.Fprintf(os.Stderr, "Dataset oligos: %d\n", dspool.Size())
 	}
 
@@ -145,7 +147,18 @@ func main() {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "\nTotal: %d, selected %d, with primers %d\n", total, selected, prcount)
+	dsmatch := 0
+	if dspool != nil {
+		for _, v := range dsmap {
+			if v {
+				dsmatch++
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "\nTotal: %d, selected %d, with primers %d, dataset matches %d\n", total, selected, prcount, dsmatch)
+	} else {
+		fmt.Fprintf(os.Stderr, "\nTotal: %d, selected %d, with primers %d\n", total, selected, prcount)
+	}
 }
 
 func seqproc(ch chan Seq, ech chan bool) {
@@ -200,9 +213,18 @@ func seqproc(ch chan Seq, ech chan bool) {
 		}
 
 		prcnt++
-		if dspool != nil && dspool.Search(tol, *dist) == nil {
-			// doesn't match an oligo in the dataset
-			continue
+		if dspool != nil {
+			ms := dspool.Search(tol, *dist)
+			if ms == nil {
+				// doesn't match an oligo in the dataset
+				continue
+			}
+
+			ulock.Lock()
+			for _, m := range ms {
+				dsmap[m.Seq.String()] = true
+			}
+			ulock.Unlock()
 		}
 
 		ss := tol.String()

@@ -210,6 +210,10 @@ func  (o *Oligo) Invert() {
 	oligo.Invert(o)
 }
 
+func (o *Oligo) Oligo() oligo.Oligo {
+	return o.ol
+}
+
 func (o *Oligo) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) oligo.Oligo {
 	var ppos, spos, plen, slen int
 
@@ -236,10 +240,6 @@ func (o *Oligo) Trim(prefix, suffix oligo.Oligo, dist int, keep bool) oligo.Olig
 	}
 
 	return o.Slice(ppos, spos)
-}
-
-func (o *Oligo) Oligo() oligo.Oligo {
-	return o.ol
 }
 
 func ToOligoArray(uols []*Oligo) (ret []oligo.Oligo) {

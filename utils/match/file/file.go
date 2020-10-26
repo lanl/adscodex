@@ -2,8 +2,10 @@ package file
 
 import (
 	"bufio"
+	"compress/gzip"
 _	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strconv"
@@ -56,6 +58,8 @@ func Read(fname string) (matches [][]*Match, err error) {
 }
 
 func Parse(fname string, process func(id, count int, diff string, cubu float64, orig, read oligo.Oligo)) (err error) {
+	var r io.Reader
+
 	f, e := os.Open(fname)
 	if e != nil {
 		err = e
@@ -63,7 +67,13 @@ func Parse(fname string, process func(id, count int, diff string, cubu float64, 
 	}
 	defer f.Close()
 
-	sc := bufio.NewScanner(f)
+	if cf, err := gzip.NewReader(f); err == nil {
+		r = cf
+	} else {
+		r = f
+	}
+
+	sc := bufio.NewScanner(r)
 	n := 0
 	for sc.Scan() {
 		var id, count int

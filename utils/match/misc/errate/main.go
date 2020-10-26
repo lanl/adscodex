@@ -16,12 +16,14 @@ var err = flag.Int("err", 0, "Maximum number of errors for match (0 - any)")
 var p5primer = flag.String("p5", "", "5'-end primer")
 var p3primer = flag.String("p3", "", "3'-end primer")
 var dist = flag.Int("dist", 2, "number of errors allowed in the primers when matching")
+var xprimers = flag.Bool("xp", false, "exclude primers from stats");
 
 func main() {
 	var erri, errd, errs uint64	// number of insertion/deletion/substitution errors
 	var nts uint64			// total number of nucleotides
 	var ok bool
 	var p3, p5 oligo.Oligo
+	var p3len, p5len int
 	var mutex sync.Mutex
 
 	flag.Parse()
@@ -35,6 +37,7 @@ func main() {
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Error: invalid 5'-end primer: %v\n", *p5primer)
 		}
+		p5len = p5.Len()
 	}
 
 	if *p3primer != "" {
@@ -42,6 +45,7 @@ func main() {
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Error: invalid 5'-end primer: %v\n", *p5primer)
 		}
+		p3len = p3.Len()
 	}
 
 	n := 0
@@ -61,7 +65,7 @@ func main() {
 
 		if p5 != nil && p3 != nil {
 			// ignore reads that don't have the primers
-			ppos, _ := oligo.Find(read, p5, *dist)
+			ppos, plen := oligo.Find(read, p5, *dist)
 			if ppos == -1 {
 				return
 			}
@@ -70,10 +74,15 @@ func main() {
 			if spos == -1 {
 				return
 			}
-//			fmt.Printf("ppos %d spos %d slen %d\n", ppos, spos, slen)
-			send := spos + slen
 
-			read = read.Slice(ppos, send)
+			if (*xprimers) {
+				ppos += plen
+				orig = orig.Slice(p5len, orig.Len() - p3len)
+			} else {
+				spos += slen
+			}
+
+			read = read.Slice(ppos, spos)
 			_, diff = oligo.Diff(orig, read)
 //			fmt.Printf("%v\n%v\n%v\n", orig, read, diff)
 		}

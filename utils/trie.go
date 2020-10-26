@@ -283,3 +283,11 @@ func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist int, didx int,
 
 	return match
 }
+
+func (t *Trie) Size() int {
+	if t == nil {
+		return 0
+	}
+
+	return 1 + t.chld[0].Size() + t.chld[1].Size() + t.chld[2].Size() + t.chld[3].Size()
+}

@@ -131,9 +131,25 @@ func main() {
 		return
 	}
 
+	var vsz, usz, hsz, off uint64
 	for i := 0; i < len(data); i++ {
 		d := &data[i]
-		fmt.Printf("%d: %d verified %v\n", d.Offset, len(d.Data), d.Verified)
+		if d.Offset != off {
+			if d.Offset < off {
+				panic(fmt.Sprintf("d.Offset %d off %d\n", d.Offset, off))
+			}
+
+			hsz += d.Offset - off
+		}
+
+		if d.Verified {
+			vsz += uint64(len(d.Data))
+		} else {
+			usz += uint64(len(d.Data))
+		}
+
+		off = d.Offset + uint64(len(d.Data))
+//		fmt.Printf("%d: %d verified %v\n", d.Offset, len(d.Data), d.Verified)
 		of.Seek(int64(d.Offset), 0)
 		of.Write(d.Data)
 	}
@@ -142,4 +158,6 @@ func main() {
 	if len(data) != 1 {
 		fmt.Printf("Warning: not all data was recovered, the file has holes\n")
 	}
+
+	fmt.Printf("%d bytes verified, %d unverified, %d holes\n", vsz, usz, hsz)
 }

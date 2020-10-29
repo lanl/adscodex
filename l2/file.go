@@ -614,6 +614,8 @@ nosha1:
 	var verified bool
 	var off uint64
 
+	ds = nil
+	data = nil
 	for o := uint64(0); o < chunklen; {
 		var v bool
 		var d []byte

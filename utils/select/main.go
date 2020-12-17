@@ -18,6 +18,7 @@ type Seq struct {
 	seq	string
 	quality	[]byte
 	rev	bool
+	id	string
 }
 
 var pdist = flag.Int("pdist", 3, "errors in primer");
@@ -34,6 +35,7 @@ var pr5, pr3 oligo.Oligo
 var dspool *utils.Pool
 var ulock sync.Mutex
 var umap map[string]*utils.Oligo
+var idmap map[string][]string
 var total, selected, prcount uint64
 var dsmap map[string]bool
 
@@ -85,6 +87,7 @@ func main() {
 //	fmt.Fprintf(os.Stderr, "5'-end: %v\n", pr5)
 //	fmt.Fprintf(os.Stderr, "3'-end: %v\n", pr3)
 	umap = make(map[string] *utils.Oligo)
+	idmap = make(map[string] []string)
 	ch := make(chan Seq, 20)
 	ech := make(chan bool)
 	nprocs := runtime.NumCPU()
@@ -100,7 +103,7 @@ func main() {
 				quality = nil
 			}
 
-                        ch <- Seq{sequence, quality, reverse}
+                        ch <- Seq{sequence, quality, reverse, id}
                         return nil
                 }
 
@@ -124,7 +127,7 @@ func main() {
 	}
 
 	for i := 0; i < nprocs; i++ {
-		ch <- Seq{"", nil, false}
+		ch <- Seq{"", nil, false, ""}
 	}
 
 	for i := 0; i < nprocs; i++ {
@@ -143,7 +146,8 @@ func main() {
 		})
 
 		for _, o := range oligos {
-			fmt.Printf("%v %v %v\n", o.String(), o.Qubundance(), o.Count())
+			s := o.String()
+			fmt.Printf("%v %v %v %v\n", s, o.Qubundance(), o.Count(), idmap[s])
 		}
 	}
 
@@ -235,9 +239,11 @@ func seqproc(ch chan Seq, ech chan bool) {
 			} else {
 				umap[ss] = tol
 			}
+
+			idmap[ss] = append(idmap[ss], s.id)
 			ulock.Unlock()
 		} else {
-			fmt.Printf("%v %v %v\n", ss, ol.Qubundance(), ol.Count())
+			fmt.Printf("%v %v %v %s\n", ss, ol.Qubundance(), ol.Count(), s.id)
 		}
 	}
 

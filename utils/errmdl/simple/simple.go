@@ -113,11 +113,11 @@ func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []olig
 		var count int
 
 		for i := 0; i <= n; count++ {
-			if em.rnd.Float64() < em.p {
+			if em.rnd.Float64() > em.p {
 				i++
 			}
 		}
-//		count -= n
+		count -= n
 
 		// generate the reads for the oligo
 		for i := 0; i < count; i++ {
@@ -127,6 +127,13 @@ func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []olig
 		}
 	}
 
+	em.rnd.Shuffle(len(rs),  func (i, j int) {
+		rs[i], rs[j] = rs[j], rs[i]
+	})
+
+	if len(rs) > numreads {
+		rs = rs[0:numreads]
+	}
 /*
 	for i := 0; i < numreads; i++ {
 		o := ols[em.rnd.Int31n(int32(len(ols)))]

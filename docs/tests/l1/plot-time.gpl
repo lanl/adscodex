@@ -1,4 +1,4 @@
-set terminal pdf enhanced size 4 in, 2.5 in
+set terminal pdf enhanced size 4 in, 2 in
 set output name.'-time.pdf'
 
 #set title "Error Rate"
@@ -7,6 +7,7 @@ set output name.'-time.pdf'
 #set format x ""
 set ylabel "Time (ms)"
 set xlabel "Probability of an error per position (%)"
+set key right bottom
 
 fname=name.".data"
 plot \

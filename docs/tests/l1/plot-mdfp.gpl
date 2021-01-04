@@ -1,4 +1,4 @@
-set terminal pdf enhanced size 4 in, 2.5 in
+set terminal pdf enhanced size 4 in, 2 in
 set output name.'-md-fp.pdf'
 
 set title "Metadata False Positive Rate"

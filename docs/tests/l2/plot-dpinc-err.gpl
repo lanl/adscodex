@@ -1,0 +1,21 @@
+set terminal pdf enhanced size 4 in, 2 in
+set output 'dpinc2.pdf'
+
+#set title "Metadata Error Rate"
+#set xrange [-0.01:1.02]
+set yrange [0:1]
+#set format x ""
+set ylabel "Verified Rate"
+set xlabel "Probability of an error per position (%)"
+set key right top
+
+fname="dpinc2.data"
+plot \
+	"< awk '$1 == 1 { print $0 }' ".fname using 9:10 with lines ls 1 title "Depth 1",\
+	"< awk '$1 == 4 { print $0 }' ".fname using 9:10 with lines ls 2 title "Depth 4",\
+	"< awk '$1 == 8 { print $0 }' ".fname using 9:10 with lines ls 3 title "Depth 8",\
+	"< awk '$1 == 12 { print $0 }' ".fname using 9:10 with lines ls 4 title "Depth 12",\
+	"< awk '$1 == 16 { print $0 }' ".fname using 9:10 with lines ls 5 title "Depth 16",\
+	"< awk '$1 == 20 { print $0 }' ".fname using 9:10 with lines ls 6 title "Depth 20",\
+	"< awk '$1 == 24 { print $0 }' ".fname using 9:10 with lines ls 7 title "Depth 24",\
+	"< awk '$1 == 28 { print $0 }' ".fname using 9:10 with lines ls 8 title "Depth 28",\

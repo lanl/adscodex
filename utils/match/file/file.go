@@ -16,7 +16,7 @@ _	"acoma/utils"
 )
 
 type Match struct {
-	id	int
+	Id	int
 	Orig	oligo.Oligo	// original oligo from the dataset
 	Read	oligo.Oligo	// the read that is matched to it
 	Count	int		// number of reads
@@ -33,6 +33,7 @@ func Read(fname string) (matches [][]*Match, err error) {
 	maxid := 0
 	err = Parse(fname, func(id, count int, diff string, cubu float64, orig, read oligo.Oligo) {
 		m := new(Match)
+		m.Id = id
 		m.Count = count
 		m.Cubu = cubu
 		m.Diff = diff
@@ -180,7 +181,7 @@ func ParseParallel(fname string, numprocs int, process func(id, count int, diff 
 					return
 				}
 
-				process(m.id, m.Count, m.Diff, m.Cubu, m.Orig, m.Read)
+				process(m.Id, m.Count, m.Diff, m.Cubu, m.Orig, m.Read)
 			}
 		}()
 	}

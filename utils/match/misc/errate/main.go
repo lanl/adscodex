@@ -19,8 +19,11 @@ var dist = flag.Int("dist", 2, "number of errors allowed in the primers when mat
 var xprimers = flag.Bool("xp", false, "exclude primers from stats");
 
 func main() {
-	var erri, errd, errs uint64	// number of insertion/deletion/substitution errors
-	var nts uint64			// total number of nucleotides
+	var errins, errdel, errsub uint64		// number of insertion/deletion/substitution errors
+	var ntcount uint64				// total number of nucleotides
+	var insmap[4] uint64
+	var delmap[4] uint64
+	var submap[4][4]	uint64	// count per nt
 	var ok bool
 	var p3, p5 oligo.Oligo
 	var p3len, p5len int
@@ -87,24 +90,62 @@ func main() {
 //			fmt.Printf("%v\n%v\n%v\n", orig, read, diff)
 		}
 
-		c64 := uint64(count)
-		mutex.Lock()
-		for i := 0; i < len(diff); i++ {
-			nts += c64
-			switch diff[i] {
+		var nts, erri, errd, errs int
+		var imap, dmap [4]int
+		var smap [4][4] int
+
+		i, j := 0, 0
+		olen := orig.Len()
+		rlen := read.Len()
+		nts += count * olen
+		for a := 0; a < len(diff); a++ {
+			if olen <= i || rlen <= j {
+//				fmt.Printf("\nOrig: %v %d\n", orig, i)
+//				fmt.Printf("Read: %v %d\n", read, j)
+//				fmt.Printf("Diff: %v %d\n", diff, a)
+			}
+			switch diff[a] {
+			case '-':
+				i++
+				j++
+
 			case 'I':
-				erri += c64
+				erri += count
+				c := read.At(j)
+				imap[c] += count
+				j++
 
 			case 'D':
-				errd += c64
+				errd += count
+				oc := orig.At(i)
+				dmap[oc] += count
+				i++
 
 			case 'R':
-				errs += c64
+				errs += count
+				oc := orig.At(i)
+				c := read.At(j)
+				smap[oc][c] += count
+				i++
+				j++
 			}
 		}
+
+		mutex.Lock()
+		ntcount += uint64(nts)
+		errins += uint64(erri)
+		errdel += uint64(errd)
+		errsub += uint64(errs)
+		for i := 0; i < len(imap); i++ {
+			insmap[i] += uint64(imap[i])
+			delmap[i] += uint64(dmap[i])
+			for j := 0; j < len(smap[i]); j++ {
+				submap[i][j] += uint64(smap[i][j])
+			}
+		}
+		n++
 		mutex.Unlock()
 
-		n++
 		if n%100000 == 0 {
 			fmt.Fprintf(os.Stderr, ".")
 		}
@@ -116,5 +157,47 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Errors(%%): insertion %v deletion %v substitution %v\n", float64(erri*100)/float64(nts), float64(errd*100)/float64(nts), float64(errs*100)/float64(nts))
+	fmt.Printf("Errors(%%):\n\tInsertion\t%v\n\tDeletion\t%v\n\tSubstitution\t%v\n\tTotal\t%v\n", 
+		float64(errins*100)/float64(ntcount), float64(errdel*100)/float64(ntcount), float64(errsub*100)/float64(ntcount), float64((errins+errdel+errsub)*100)/float64(ntcount))
+
+	fmt.Printf("Insertion per nt:\n")
+	for i := 0; i < len(insmap); i++ {
+		fmt.Printf("\t%v\t%.2f\t%v\n", oligo.Nt2String(i), float64(insmap[i] * 100)/float64(errins), float64(insmap[i] * 100)/float64(ntcount))
+	}
+
+	fmt.Printf("Deletion per nt:\n")
+	for i := 0; i < len(delmap); i++ {
+		fmt.Printf("\t%v\t%.2f\t%v\n", oligo.Nt2String(i), float64(delmap[i] * 100)/float64(errdel), float64(delmap[i] * 100)/float64(ntcount))
+	}
+
+	fmt.Printf("Substitution per nt:\n")
+	fmt.Printf("\t")
+	for i := 0; i < len(submap); i++ {
+		fmt.Printf("\t%v", oligo.Nt2String(i))
+	}
+	fmt.Printf("\t*\n")
+	for i := 0; i < len(submap); i++ {
+		fmt.Printf("\t%v", oligo.Nt2String(i))
+		var s uint64
+		for j := 0; j < len(submap[i]); j++ {
+			s += submap[i][j]
+			fmt.Printf("\t%.2f", float64(submap[i][j] * 100)/float64(errsub))
+		}
+		fmt.Printf("\t%.2f\n", float64(s * 100)/float64(errsub))
+	}
+
+	var s[4] uint64
+	for i := 0; i < len(submap); i++ {
+		for j := 0; j < len(submap[i]); j++ {
+			s[j] += submap[i][j]
+		}
+	}
+
+	var total uint64
+	fmt.Printf("\t*")
+	for _, ss := range s {
+		total += ss
+		fmt.Printf("\t%.2f", float64(ss * 100)/float64(errsub))
+	}
+	fmt.Printf("\t%.2f\n", float64(total * 100)/float64(errsub))
 }

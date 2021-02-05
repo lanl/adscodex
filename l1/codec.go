@@ -73,12 +73,13 @@ var crcParams = []crc.Parameters {
 	6: crc.Parameters{ Width: 11, Polynomial: 0x1eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-11F/8
 	7: crc.Parameters{ Width: 13, Polynomial: 0x16f, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-13F/8.2
 
-	8: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-15/CAN
-	9: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-17
-	10: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// 
-	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// 
-	14: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		//
-	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		//
+	8: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-15/CAN
+	9: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-17
+	10: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
+	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
+	14: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
+	16: crc.Parameters{ Width: 30, Polynomial: 0x2030b9c7, ReflectIn: false, ReflectOut: false, Init: 0x3fffffff, FinalXor: 0x3fffffff },	// CRC-30/CDMA
+	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
 }
 
 func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err error) {

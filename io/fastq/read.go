@@ -50,6 +50,7 @@ func Parse(fname string, process func(id, sequence string, quality []byte, rever
 	if cf, err := gzip.NewReader(f); err == nil {
 		r = cf
 	} else {
+		f.Seek(0, 0)
 		r = f
 	}
 

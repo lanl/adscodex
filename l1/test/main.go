@@ -21,11 +21,15 @@ var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
 var dtctype = flag.String("dtctype", "parity", "data error detection type (parity or even)")
 var iternum = flag.Int("iternum", 1000, "number of iterations")
-var errate = flag.Float64("err", 1.0, "error rate (percent)")
+var ierrate = flag.Float64("ierr", 1.0, "insertion error rate (percent)")
+var derrate = flag.Float64("derr", 1.0, "deletion error rate (percent)")
+var serrate = flag.Float64("serr", 1.0, "substituion error rate (percent)")
 var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
 var seed = flag.Int64("s", 0, "random generator seed")
 var hdr = flag.Bool("hdr", false, "print the header and exit")
+var errmdl = flag.String("emdl", "", "error model file")
+var emdlmaxerrs = flag.Int("emdlmaxerrs", 100, "filter out entries with more than the specified number of errors")
 
 type Stat struct {
 	count	int		// number of tests
@@ -73,8 +77,8 @@ func main() {
 		total.dur += st.dur
 	}
 
-	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, *errate,
-		float64(total.mderr)/float64(total.count), 
+	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, *ierrate + *derrate + *serrate,
+		float64(total.mderr)/float64(total.count),
 		float64(total.mdfp)/float64(total.count), 
 		float64(total.dterr)/float64(*dbnum * total.count),
 		float64(total.dtfp)/float64(*dbnum * total.count),
@@ -125,7 +129,11 @@ func initTest() error {
 		err = cdc.SetDataChecksum(l1.CSumEven)
 	}
 
-	em = simple.New(*errate/100, *errate/100, *errate/100, 0.8, *seed)
+	if *errmdl != "" {
+		err = cdc.SetErrorModel(*errmdl, *emdlmaxerrs)
+	}
+
+	em = simple.New(*ierrate/100, *derrate/100, *serrate/100, 0.8, *seed)
 	if *seed == 0 {
 		rndseed = time.Now().UnixNano()
 	} else {

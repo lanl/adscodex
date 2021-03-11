@@ -4,6 +4,7 @@ import (
 	"math/bits"
 	"errors"
 	"fmt"
+_	"os"
 	"acoma/oligo"
 	"acoma/oligo/long"
 	"acoma/criteria"
@@ -42,6 +43,9 @@ type Codec struct {
 	mdcsum	int	// md blocks checksum (CSumRS or CSumCRC, default CSumRS)
 	dtcsum	int	// data blocks checksum (CSumParity, CSumEven, ..., default CSumParity)
 
+	// error entries, for metadata recovery, sorted in decreasing probability order
+	ents	[]Eentry
+
 	olen	int	// oligo length, not including the primers
 	ec	reedsolomon.Encoder
 	crc	*crc.Table
@@ -76,7 +80,8 @@ var crcParams = []crc.Parameters {
 	8: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-15/CAN
 	9: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-17
 	10: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
-	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
+	12: crc.Parameters{ Width: 22, Polynomial: 0x5781eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-23K/6
+//	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
 	14: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
 	16: crc.Parameters{ Width: 30, Polynomial: 0x2030b9c7, ReflectIn: false, ReflectOut: false, Init: 0x3fffffff, FinalXor: 0x3fffffff },	// CRC-30/CDMA
 	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
@@ -89,11 +94,12 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err er
 	c.mdsz = mdsz
 	c.crit = crit
 	c.mdcsum = CSumCRC
+//	c.ents = []Eentry { Eentry{1.0, 0, nil} }
 
 	// TODO: make it work with longer metadata blocks
-	if maxvals[mdsz * rsnum] == 0 {
-		return nil, fmt.Errorf("unsupported metadata size: %d", mdsz)
-	}
+//	if maxvals[mdsz * rsnum] == 0 {
+//		return nil, fmt.Errorf("unsupported metadata size: %d", mdsz)
+//	}
 
 	if err := c.updateChecksums(); err != nil {
 		return nil, err
@@ -134,6 +140,11 @@ func (c *Codec) SetDataChecksum(cs int) error {
 
 	c.dtcsum = cs
 	return nil
+}
+
+func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
+	c.ents, err = readErrorEntries(fname, maxerrs)
+	return
 }
 
 func (c *Codec) updateChecksums() (err error) {
@@ -407,11 +418,11 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 
 	case CSumCRC:
 		cval := c.crc.InitCrc()
-//		fmt.Printf("+ %v\n", mdb)
+//		fmt.Fprintf(os.Stderr, "+ %v\n", mdb)
 		for i := uint64(0); i < mdnum; i++ {
 			// TODO: works up to 16 bit metadata blocks
 			cval = c.crc.UpdateCrc(cval, []byte { byte(mdb[i]), byte(mdb[i]>>8)})
-//			fmt.Printf("\t%v: %v\n", []byte { byte(mdb[i]), byte(mdb[i]>>8)}, cval)
+//			fmt.Fprintf(os.Stderr, "\t%v: %v\n", []byte { byte(mdb[i]), byte(mdb[i]>>8)}, cval)
 		}
 		cval = c.crc.CRC(cval)
 //		cv := cval
@@ -421,7 +432,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 			cval /= mval
 		}
 
-//		fmt.Printf("\tmdblks %v crc %d\n", mdb, cv)
+//		fmt.Fprintf(os.Stderr, "\tmdblks %v crc %d rem %d\n", mdb, cv, cval)
 	}
 
 	return mdb, nil
@@ -445,10 +456,10 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 
 	case CSumCRC:
 		cval := c.crc.InitCrc()
-//		fmt.Printf("- mdblks %v\n", mdblks)
+//		fmt.Fprintf(os.Stderr, "- mdblks %v\n", mdblks)
 		for i := 0; i < c.blknum - c.rsnum; i++ {
 			cval = c.crc.UpdateCrc(cval, []byte { byte(mdblks[i]), byte(mdblks[i]>>8) })
-//			fmt.Printf("\t%v: %v\n", []byte { byte(mdblks[i]), byte(mdblks[i]>>8)}, cval)
+//			fmt.Fprintf(os.Stderr, "\t%v: %v\n", []byte { byte(mdblks[i]), byte(mdblks[i]>>8)}, cval)
 		}
 		cval = c.crc.CRC(cval)
 
@@ -458,7 +469,7 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 			cval2 = (cval2 * mval) + mdblks[i]
 		}
 
-//		fmt.Printf("\tmdblks %v crc %d calculated crc %d\n", mdblks, cval2, cval)
+//		fmt.Fprintf(os.Stderr, "\tmdblks %v crc %d calculated crc %d\n", mdblks, cval2, cval)
 
 		ok = cval == cval2
 	}
@@ -510,6 +521,11 @@ func (c *Codec) Decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 }
 
 func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
+	if c.ents != nil {
+		address, ef, data, err = c.tryDecode(p5, p3, ol, difficulty)
+		return
+	}
+
 	var sf bool
 	var e error
 

@@ -15,10 +15,10 @@ import (
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")
 var mdsz = flag.Int("mdsz", 4, "metadata block sizee")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
-var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
-var iternum = flag.Int("iternum", 1000, "number of iterations")
+var mdctype = flag.String("mdctype", "crc", "metadata error detection type (rs or crc)")
+var iternum = flag.Int("iternum", 100, "number of iterations")
 var errnum = flag.Int("errnum", 3, "number of errors")
-var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
+var dfclty =  flag.Int("dfclty", 1, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
 
 func TestMain(m *testing.M) {
@@ -69,6 +69,10 @@ func initTest(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
+	}
+
+	if err := cdc.SetErrorModel("163.emdl", 100000); err != nil {
+		t.Fatalf("Error Model Error: %v\n", err)
 	}
 }
 

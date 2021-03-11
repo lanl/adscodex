@@ -1,4 +1,4 @@
-set terminal pdf enhanced size 4 in, 2 in
+set terminal pdf enhanced size 4.1 in, 1.9 in
 set output 'dpinc2.pdf'
 
 #set title "Metadata Error Rate"
@@ -11,11 +11,10 @@ set key right top
 
 fname="dpinc2.data"
 plot \
-	"< awk '$1 == 1 { print $0 }' ".fname using 9:10 with lines ls 1 title "Depth 1",\
-	"< awk '$1 == 4 { print $0 }' ".fname using 9:10 with lines ls 2 title "Depth 4",\
-	"< awk '$1 == 8 { print $0 }' ".fname using 9:10 with lines ls 3 title "Depth 8",\
-	"< awk '$1 == 12 { print $0 }' ".fname using 9:10 with lines ls 4 title "Depth 12",\
-	"< awk '$1 == 16 { print $0 }' ".fname using 9:10 with lines ls 5 title "Depth 16",\
-	"< awk '$1 == 20 { print $0 }' ".fname using 9:10 with lines ls 6 title "Depth 20",\
-	"< awk '$1 == 24 { print $0 }' ".fname using 9:10 with lines ls 7 title "Depth 24",\
-	"< awk '$1 == 28 { print $0 }' ".fname using 9:10 with lines ls 8 title "Depth 28",\
+	"< awk '$1 == 1 { print $0 }' ".fname using 9:10 with lines ls 1 dt 1 title "1",\
+	"< awk '$1 == 4 { print $0 }' ".fname using 9:10 with lines ls 2 dt 2 title "4",\
+	"< awk '$1 == 8 { print $0 }' ".fname using 9:10 with lines ls 3 dt 3 title "8",\
+	"< awk '$1 == 12 { print $0 }' ".fname using 9:10 with lines ls 4 dt 4 title "12",\
+	"< awk '$1 == 20 { print $0 }' ".fname using 9:10 with lines ls 5 dt 5 title "20",\
+	"< awk '$1 == 28 { print $0 }' ".fname using 9:10 with lines ls 6 dt 6 title "28",\
+	"< awk '$1 == 50 { print $0 }' ".fname using 9:10 with lines ls 7 dt 7 title "50",\

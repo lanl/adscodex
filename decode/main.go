@@ -27,6 +27,8 @@ var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs 
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
+var verbose = flag.Bool("v", false, "verbose")
+var start = flag.Uint64("addr", 0, "start address")
 
 func main() {
 	flag.Parse()
@@ -90,6 +92,7 @@ func main() {
 		return
 	}
 	cdc.SetRandomize(*rndomize)
+	cdc.SetVerbose(*verbose)
 
 	var oligos []oligo.Oligo
 
@@ -98,17 +101,17 @@ func main() {
 		err = fmt.Errorf("Unsupported input type: %s\n", *ftype)
 
 	case "csv":
-		oligos, err = csv.Read(flag.Arg(0), true)
+		oligos, err = csv.Read(flag.Arg(0), false)
 
 	case "fastq":
-		oligos, err = fastq.Read(flag.Arg(0), true)
+		oligos, err = fastq.Read(flag.Arg(0), false)
 	}
 
 	if err != nil {
 		fmt.Printf("Can't  parse input: %v\n", err)
 	}
 
-	fmt.Printf("%d oligos\n", len(oligos))
+	fmt.Fprintf(os.Stderr, "%d oligos\n", len(oligos))
 	if *profname != "" {
 		f, err := os.Create(*profname)
 		if err != nil {
@@ -124,7 +127,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	data := cdc.Decode(0, math.MaxUint64, oligos)
+	data := cdc.Decode(*start, math.MaxUint64, oligos)
 	of, err := os.Create(flag.Arg(1))
 	if err != nil {
 		fmt.Printf("Error creating the file: %s: %v\n", flag.Arg(1), err)
@@ -156,8 +159,8 @@ func main() {
 	of.Close()
 
 	if len(data) != 1 {
-		fmt.Printf("Warning: not all data was recovered, the file has holes\n")
+		fmt.Fprintf(os.Stderr, "Warning: not all data was recovered, the file has holes\n")
 	}
 
-	fmt.Printf("%d bytes verified, %d unverified, %d holes\n", vsz, usz, hsz)
+	fmt.Fprintf(os.Stderr, "%d bytes verified, %d unverified, %d holes\n", vsz, usz, hsz)
 }

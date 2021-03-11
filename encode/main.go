@@ -22,6 +22,7 @@ var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (pari
 var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var shuffle = flag.Int("shuffle", 0, "random seed for shuffling the order of the oligos (0 disable)")
+var start = flag.Uint64("addr", 0, "start address")
 
 func main() {
 	flag.Parse()
@@ -106,7 +107,7 @@ func main() {
 		b = b[n:]
 	}
 
-	_, oligos, err := cdc.Encode(0, data)
+	lastaddr, oligos, err := cdc.Encode(*start, data)
 	if err != nil {
 		fmt.Printf("Error while encoding: %v\n", err)
 		return
@@ -119,7 +120,8 @@ func main() {
 		})
 	}
 
+	fmt.Fprintf(os.Stderr, "Address: %v::%v\n", *start, lastaddr)
 	for i, ol := range oligos {
-		fmt.Printf("%v,L%d\n", ol, i)
+		fmt.Printf("%v,L%d\n", ol, uint64(i) + *start)
 	}
 }

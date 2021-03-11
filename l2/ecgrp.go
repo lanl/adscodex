@@ -2,7 +2,7 @@ package l2
 
 import (
 	"fmt"
-_	"os"
+	"os"
 	"sync"
 	"github.com/klauspost/reedsolomon"
 )
@@ -29,6 +29,7 @@ type EcCol struct {
 type EcGroup struct {
 	sync.Mutex
 	cols	[]EcCol
+	verbose	bool		// for debugging
 }
 
 const (
@@ -88,6 +89,10 @@ func newEcGroup(rows, cols int) (eg *EcGroup) {
 // Add data from another oligo to the EC group
 // Returns true if there is a change in the EC group data
 func (eg *EcGroup) addEntry(row int, dblks []Blk, ecnum int, rsenc reedsolomon.Encoder) (ret bool) {
+	if eg.verbose {
+		fmt.Fprintf(os.Stderr, "--- addEntry %d %v\n", row, dblks)
+	}
+
 	eg.Lock()
 	maxblk := len(dblks)
 //	fmt.Fprintf(os.Stderr, "addEntry %d\n", row)
@@ -115,9 +120,20 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 
 	// check if the block is already present
 	if c.elems[row].bset.Exist(db) {
+//		if eg.verbose {
+//			fmt.Fprintf(os.Stderr, "-+- row %d col %d %v %v\n", row, col, db, c.elems[row].bset)
+//		}
+
 		return false
 	}
 
+	if eg.verbose {
+		fmt.Fprintf(os.Stderr, "+++ column %d\n", col)
+		for i := 0; i < len(c.elems); i++ {
+			eblks := c.elems[i].bset.Blks()
+			fmt.Fprintf(os.Stderr, "\t%v\n", eblks)
+		}
+	}
 	// go over all combinations of data blocks
 	shards := make([][]byte, len(c.elems))
 	idx := make([]int, len(c.elems))
@@ -210,6 +226,10 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 			}
 		}
 
+		if eg.verbose {
+			fmt.Fprintf(os.Stderr, "=== col %d %v %v %v\n", col, shards, verified, err)
+		}
+
 		if err != nil {
 //			fmt.Printf("\t\terr %v\n", err)
 			continue
@@ -220,10 +240,17 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 			if verified {
 				if !c.elems[i].vdata.Exist(shards[i]) {
 					c.elems[i].vdata = c.elems[i].vdata.Add(shards[i])
+					if eg.verbose {
+						fmt.Fprintf(os.Stderr, "\tVVV %d %v\n", i, c.elems[i].vdata)
+					}
 				}
 			} else {
 				if !c.elems[i].uvdata.Exist(shards[i]) {
 					c.elems[i].uvdata = c.elems[i].uvdata.Add(shards[i])
+
+					if eg.verbose {
+						fmt.Fprintf(os.Stderr, "\tUUU %d %v\n", i, c.elems[i].uvdata)
+					}
 				}
 			}
 		}
@@ -248,22 +275,31 @@ func (eg *EcGroup) getVerified(row, col int) (blks []Blk) {
 		panic("eg.cols == nil")
 	}
 
-	c := eg.cols[ecGroupReverseColumn(col, row, len(eg.cols))]
+	cidx := ecGroupReverseColumn(col, row, len(eg.cols))
+	c := eg.cols[cidx]
 	el := &c.elems[row]
 	blks = el.vdata.Blks()
 	eg.Unlock()
 
+	if eg.verbose {
+		fmt.Fprintf(os.Stderr, "getVerified %d %d: cidx %d: %v\n", row, col, cidx, blks)
+	}
 	return
 }
 
 // Returns the unverified data for the specified element in the EcGroup
 func (eg *EcGroup) getUnverified(row, col int) (blks []Blk) {
 	eg.Lock()
-	c := eg.cols[ecGroupReverseColumn(col, row, len(eg.cols))]
+
+	cidx := ecGroupReverseColumn(col, row, len(eg.cols))
+	c := eg.cols[cidx]
 	el := &c.elems[row]
 	blks = el.uvdata.Blks()
 	eg.Unlock()
 
+	if eg.verbose {
+		fmt.Fprintf(os.Stderr, "getUnverified %d %d: cidx %d: %v\n", row, col, cidx, blks)
+	}
 	return
 }
 

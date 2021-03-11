@@ -25,6 +25,7 @@ type File struct {
 	elsz	int		// element size (same as blksz)
 	drows	int		// number of data rows
 	erows	int		// number of erasure rows
+	mrows	int		// max(drows, erows)
 	egrpsz	int		// number of bytes per erasure group
 	ec	reedsolomon.Encoder
 
@@ -70,6 +71,11 @@ func newFile(egrows, egcols, elsz, ecnum int, rsenc reedsolomon.Encoder, compat 
 	f.elsz = elsz
 	f.erows = ecnum
 	f.drows = f.rows - f.erows
+	f.mrows = f.drows
+	if f.mrows < f.erows {
+		f.mrows = f.erows
+	}
+
 	f.egrpsz = f.drows * f.cols * f.elsz
 	f.ec = rsenc
 
@@ -172,7 +178,7 @@ func (f *File) add(addr uint64, ef bool, dblks []Blk) bool {
 	var eg *EcGroup
 
 
-//	fmt.Fprintf(os.Stderr, "add %d\n", addr)
+//	fmt.Fprintf(os.Stderr, "+++ %d %v\n", addr, ef)
 	// if we have recovered the file size, discard entries that are outside of it
 	maxaddr := uint64(atomic.LoadInt64(&f.maxaddr))
 	if maxaddr != 0 && addr >= maxaddr {
@@ -212,6 +218,10 @@ func (f *File) add(addr uint64, ef bool, dblks []Blk) bool {
 	eg = f.egrps[idx]
 	if eg == nil {
 		eg = newEcGroup(f.rows, f.cols)
+//		if idx == 27 {
+//			eg.verbose = true
+//		}
+
 		f.egrps[idx] = eg
 	}
 	f.Unlock()
@@ -264,6 +274,10 @@ func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, 
 					ft = FileVerified | FileMulti
 				}
 
+				if eg != nil && eg.verbose {
+					fmt.Fprintf(os.Stderr, "!!! row %d col %d %d\n", row, col, len(vd))
+				}
+
 				if ft == 0 {
 					switch len(ud) {
 					case 0:
@@ -274,6 +288,10 @@ func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, 
 						ft = FileUnverified | FileMulti
 					}
 				}
+
+//				if offset == 3660 {
+//					fmt.Fprintf(os.Stderr, "############## %d\n", ft)
+//				}
 				
 				if !v(offset, f.elsz - rem, ft, vd, ud) {
 					return
@@ -297,6 +315,25 @@ out:
 	return
 }
 
+/*
+func (f *File) dumpECGroups() {
+	for i, eg := range f.egrps {
+		for row := 0; row < f.drows; row++ {
+			for col := 0; col < f.cols; col++ {
+				var ft int
+				var vd, ud []Blk
+
+				if eg != nil {
+					vd = eg.getVerified(row, col)
+					ud = eg.getUnverified(row, col)
+//					fmt.Fprintf(os.Stderr, "\trow %d col %d vd %v ud %v\n", row, col, vd, ud)
+				}
+			}
+		}
+	}
+}
+*/
+
 func (f *File) check(offset, count uint64) (rtype int, size uint64) {
 	f.visit(offset, count, func(addr uint64, sz int, dtype int, vblks []Blk, ublks []Blk) bool {
 		if sz == 0 {
@@ -305,7 +342,14 @@ func (f *File) check(offset, count uint64) (rtype int, size uint64) {
 
 		if count != math.MaxUint64 && addr + uint64(sz) > offset + count {
 			sz = int(offset + count - addr)
+			if sz < 0 {
+				return false
+			}
 		}
+
+//		if offset <= 3660 && offset+count < 3660 {
+//			fmt.Fprintf(os.Stderr, "##############check %d %d\n", rtype, dtype)
+//		}
 
 		if rtype == 0 || rtype == dtype {
 			rtype = dtype
@@ -328,6 +372,10 @@ func (f *File) read(offset, count uint64) (rtype int, data []byte, cnt uint64) {
 		if rtype == 0 {
 			rtype = dtype
 		}
+
+//		if offset <= 3660 && offset+count < 3660 {
+//			fmt.Fprintf(os.Stderr, "##############read %d %d\n", rtype, dtype)
+//		}
 
 		if dtype&FileMulti != 0 {
 			return false
@@ -366,11 +414,17 @@ func (f *File) readMulti(offset, count uint64) (rtype int, data [][]byte, cnt ui
 		}
 
 		rtype = dtype
+//		if offset <= 3660 && offset+count < 3660 {
+//			fmt.Fprintf(os.Stderr, "##############readMulti %d %d\n", rtype, dtype)
+//		}
 		cnt = uint64(sz)
 		start := f.elsz - sz
 		end := f.elsz
 		if count != math.MaxUint64 &&  addr + uint64(end) > offset + count {
 			end = int(offset + count - addr)
+			if end < 0 {
+				return false
+			}
 		}
 
 		blks := vblks
@@ -408,6 +462,7 @@ func (f *File) readSuper(offset uint64) (size uint64, sha1 []byte) {
 	// Check if there are any holes
 	n := 0
 	fmt.Fprintf(os.Stderr, "readSuper offset %d\n", offset)
+
 	for o := offset; o < offset + superSize; {
 		t, sz := f.check(o, superSize)
 //		fmt.Fprintf(os.Stderr, "readSuper: offset %d: type %x size %d\n", o, t, sz)
@@ -472,11 +527,13 @@ func (f *File) readSuper(offset uint64) (size uint64, sha1 []byte) {
 		size, _ = l0.Gint64(data)
 		sha1 = data[8:superSize - 8]
 		fmt.Fprintf(os.Stderr, "\tsuccess\n")
+
 		return
 	}
 
 	// no luck
 	fmt.Fprintf(os.Stderr, "\tfailed\n")
+
 	return
 }
 
@@ -492,7 +549,7 @@ func (f *File) updateMaxAddr() {
 		grps++
 	}
 
-	maxaddr := grps * uint64(f.drows)
+	maxaddr := grps * uint64(f.mrows)
 	f.totalsz = maxaddr * uint64(f.elsz * f.cols)
 
 	// we use it outside recoverproc, so it has to be atomically read and written

@@ -47,6 +47,7 @@ type Stat struct {
 	holesz	uint64		// number of missing bytes
 	errnum	int		// number of errors introduced
 	readnum	int		// number of reads
+	failnum	int		// number of oligos that failed to be decoded
 }
 
 var cdc *l2.Codec
@@ -195,7 +196,7 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		st.errnum += nerr
 		st.readnum += len(nols)
 
-		dss, _ := cdc.DecodeECG(*dfclty, nols)
+		dss, failed := cdc.DecodeECG(*dfclty, nols)
 		for i := 0; i < len(dpr); i++ {
 			dpr[i] = false
 		}

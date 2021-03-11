@@ -7,7 +7,9 @@ import (
 	"runtime"
 	"crypto/sha1"
 	"hash/crc64"
+	"math"
 	"os"
+	"sync"
 	"acoma/oligo"
 	"acoma/criteria"
 	"acoma/l0"
@@ -28,6 +30,7 @@ type Codec struct {
 	c1	*l1.Codec
 	ec	reedsolomon.Encoder
 
+	verbose	bool		// print information about sequences
 }
 
 // Data extent
@@ -36,6 +39,18 @@ type DataExtent struct {
 	Offset		uint64
 	Data		[]byte
 	Verified	bool		// true if the data in the extent is verified
+}
+
+// for debugging
+type DecRecord struct {
+	Addr	uint64			// address if ec oligos are counted after the data oligos in a group
+	Ecgrp	uint64
+	Ecrow	uint64
+	Lvl	int
+	Ol	oligo.Oligo
+	Data	[][]byte
+	Oaddr	int64			// the actual address in the oligo, negative if EC oligo
+	Offset	int64			// file offset (-1 for non-data oligoes like EC oligos or superblocks)
 }
 
 var Eec = errors.New("parity blocks don't match")
@@ -93,6 +108,10 @@ func (c *Codec) SetRandomize(rndmz bool) {
 	c.rndmz = rndmz
 }
 
+func (c *Codec) SetVerbose(v bool) {
+	c.verbose = v
+}
+
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()
 }
@@ -123,6 +142,11 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 		for i := 0; i < n; i++ {
 			nd = append(nd, byte(rand.Int31n(256)))
 		}
+	}
+
+	ecgrpaddr := c.dseqnum
+	if ecgrpaddr < c.rseqnum {
+		ecgrpaddr = c.rseqnum
 	}
 
 	// repeat the starting super at the end
@@ -157,9 +181,10 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 			}
 
 			oligos = append(oligos, o)
+//			fmt.Fprintf(os.Stderr, "%d %v %v\n", a, e, o)
 		}
 
-		addr += uint64(c.dseqnum)
+		addr += uint64(ecgrpaddr)
 		nd = nd[egsz:]
 	}
 
@@ -231,9 +256,107 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 
 				addr, ef, data, err := c.c1.Decode(c.p5, c.p3, ol, 1)
 				if err != nil {
-//					fmt.Printf("Error: %v\n", err)
+//					fmt.Fprintf(os.Stderr, "--- ? ? %v %v\n", ol, err)
 					continue
 				}
+
+//				fmt.Fprintf(os.Stderr, "--- %d %v %v\n", addr, ef, ol)
+				if addr < start || addr > end {
+					continue
+				}
+
+				for i := 0; i < len(dblks); i++ {
+					dblks[i] = Blk(data[i])
+				}
+
+				f.add(addr - start, ef, dblks)
+			}
+		}()
+	}
+
+	// feed the oligos in the order we got them
+	for i, ol := range oligos {
+//		fmt.Fprintf(os.Stderr, "sending %v\n", ol)
+		ch <- ol
+		if i != 0 && i%100000==0 {
+			if f.sync() {
+				// we got the whole file, no need to continue
+				break
+			}
+		}
+	}
+
+	// shut down the processing goroutines
+	for i := 0; i < nprocs; i++ {
+		ch <- nil
+	}
+
+	data = f.close()
+	fmt.Fprintf(os.Stderr, "%d extents\n", len(data))
+
+	return
+}
+
+// Decodes oligos with addresses from start to end.
+// The oligos array may contain extra oligo sequences that are not used.
+// Return all data that we recovered in data extents
+func (c *Codec) DecodeVerbose(start, end uint64, oligos []oligo.Oligo) (data []DataExtent, recs []DecRecord) {
+	var lck sync.Mutex
+
+	// spin up goroutines to decode
+	ch := make(chan oligo.Oligo)
+	f := newFile(c.dseqnum + c.rseqnum, c.c1.BlockNum(), c.c1.BlockSize(), c.rseqnum, c.ec, c.compat, c.rndmz)
+	nprocs := runtime.NumCPU()
+	for i := 0; i < nprocs; i++ {
+		go func() {
+			blknum := c.c1.BlockNum()
+			dblks := make([]Blk, blknum)
+			for {
+//				fmt.Fprintf(os.Stderr, "waiting\n")
+				ol := <- ch
+				if ol == nil {
+					break
+				}
+
+				var l int
+				var addr uint64
+				var ef bool
+				var data [][]byte
+				var err error
+				for l = 0; l < 3; l++ {
+					addr, ef, data, err = c.c1.Decode(c.p5, c.p3, ol, l)
+					if err == nil {
+						break
+					}
+				}
+
+				if err != nil {
+					lck.Lock()
+					recs = append(recs, DecRecord{math.MaxUint64, 0, 0, -1, ol, nil, math.MaxInt64, -1})
+					lck.Unlock()
+
+					continue
+				}
+
+				oaddr := int64(addr)
+				ecgrp := addr / uint64(c.dseqnum)
+				ecrow := addr % uint64(c.dseqnum)
+				if ef {
+					ecrow += uint64(c.dseqnum)
+					oaddr = -oaddr
+				}
+
+				a := ecgrp * uint64(c.dseqnum + c.rseqnum) + ecrow
+				o := oaddr * int64(c.dblknum * 4)
+				cnum := o / (superSize + superChunkSize)
+				off := int64(-1)
+				if o >= superSize + cnum * (superSize + superChunkSize) {
+					off = o - (cnum + 1) * superSize
+				}
+
+				lck.Lock()
+				recs = append(recs, DecRecord{a, ecgrp, ecrow, l, ol, data, oaddr, off})
+				lck.Unlock()
 
 				if addr < start || addr > end {
 					continue
@@ -266,7 +389,48 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 	}
 
 	data = f.close()
+//	if c.verbose {
+//		f.dumpECGroups()
+//	}
+
 	fmt.Fprintf(os.Stderr, "%d extents\n", len(data))
+
+/*
+	if c.verbose {
+//		for k, _ := range failed {
+//			fmt.Printf("-1 %s\n", k)
+//		}
+
+		sort.Slice(olist, func(i, j int) bool {
+			return olist[i].addr < olist[j].addr
+		})
+
+		idx := 0
+		for _, de := range data {
+			end := de.Offset + uint64(len(de.Data))
+			fmt.Printf("** start %d end %d verified %v\n", de.Offset, end, de.Verified)
+
+			for; idx < len(olist); idx++ {
+				r := &olist[idx]
+				off := r.addr * uint64(c.dblknum * 4)
+				if off > end {
+					break
+				}
+
+				n := 0
+				for _, d := range r.data {
+					if d != nil {
+						n++
+					}
+				}
+
+				if n > 0 {
+					fmt.Printf("%d %d %d %d %v %v\n", r.addr, r.ecgrp, r.ecrow, r.lvl, r.data, r.ol)
+				}
+			}
+		}
+	}
+*/
 	return
 }
 

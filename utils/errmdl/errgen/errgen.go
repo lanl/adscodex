@@ -26,7 +26,11 @@ func New(fname string, seed int64) (em *ErrgenErrorModel, err error) {
 	}
 
 	for _, mm := range em.matches {
-		em.seqs = append(em.seqs, mm...)
+		for _, m := range mm {
+			for i := 0; i < m.Count; i++ {
+				em.seqs = append(em.seqs, m)
+			}
+		}
 	}
 
 	em.rnd = rand.New(rand.NewSource(seed))

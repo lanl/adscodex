@@ -123,6 +123,7 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err er
 		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
 	}
 
+	c.ents = generateErrorEntries(0.01, 0.01, 0.01, 4)
 	return
 }
 
@@ -145,6 +146,10 @@ func (c *Codec) SetDataChecksum(cs int) error {
 func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
 	c.ents, err = readErrorEntries(fname, maxerrs)
 	return
+}
+
+func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
+	c.ents = generateErrorEntries(ierr, derr, serr, maxerrs)
 }
 
 func (c *Codec) updateChecksums() (err error) {
@@ -521,148 +526,6 @@ func (c *Codec) Decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, 
 }
 
 func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
-	if c.ents != nil {
-		address, ef, data, err = c.tryDecode(p5, p3, ol, difficulty)
-		return
-	}
-
-	var sf bool
-	var e error
-
-	// TODO: fix this
-	if p5.Len() < 4 || p3.Len() < 4 {
-		panic("primers too short")
-	}
-
-	// First cut the primers
-	pos5, len5 := oligo.Find(ol, p5, PrimerErrors)
-	if pos5 != 0 {
-		err = Eprimer
-		return
-	}
-
-	pos3, _/*len3*/ := oligo.Find(ol, p3, PrimerErrors)
-	if pos3 < 0 /*|| pos3+len3 != ol.Len()*/ {
-		err = Eprimer
-		return
-	}
-	ol = ol.Slice(pos5+len5, pos3)
-	p5suffix := p5.Slice(p5.Len() - 4, p5.Len())
-
-	// Next, try to decode the metadata.
-	mdblks := make([]uint64, c.blknum)
-	mdok := true
-
-	// collect metadata
-	for i, mdpos := 0, dblkSize; i < c.blknum; i++ {
-		mdsz := c.mdsz
-		if i >= c.blknum - c.rsnum {
-			mdsz = c.mdcsumLen()	// erasure blocks might be differeent size
-		}
-
-		mdpfx := ol.Slice(mdpos - 4, mdpos)
-		mdol := ol.Slice(mdpos, mdpos + mdsz)
-		if mdol.Len() != mdsz {
-			// short oligo
-			mdok = false
-			break
-		}
-
-		mdblks[i], e = l0.Decode(mdpfx, mdol, c.crit)
-		if e != nil {
-			mdok = false
-			break
-		}
-
-		if mdblks[i] >= uint64(maxvals[c.mdsz]) {
-			mdok = false
-			break
-		}
-
-		mdpos += dblkSize + mdsz
-	}
-
-	// check if the erasure codes match
-	if mdok {
-		mdok, err = c.checkMDBlocks(mdblks)
-	}
-
-	if mdok {
-		// Next decode the data
-		dpfx := p5suffix
-		for i, dpos := 0, 0; i < c.blknum; i++ {
-			var v uint64
-			var d []byte
-
-			dol := ol.Slice(dpos, dpos + dblkSize)
-			if dol.Len() != dblkSize {
-				goto savedblk
-			}
-
-			v, e = l0.Decode(dpfx, dol, c.crit)
-			if e == nil {
-				var ok bool
-
-				ok, d = c.checkDataBlock(v)
-				if !ok {
-					// just in case
-					d = nil
-				}
-			}
-
-savedblk:
-			data = append(data, d)
-
-			mdsz := c.mdsz
-			if i >= c.blknum - c.rsnum {
-				mdsz = c.mdcsumLen()
-			}
-
-			dpos += dblkSize + mdsz
-			dpfx = ol.Slice(dpos - 4, dpos)
-		}
-	} else {
-		// The metadata didn't compute
-		if difficulty == 0 {
-			err = Emetadata
-			return
-		}
-
-		// Try to recover the metadata, and eventually get better at the data too
-		data, mdblks, err = c.tryRecover(p5suffix, ol, difficulty)
-		if err != nil {
-			return
-		}
-	}
-
-	// FIXME: md can be more than 64 bits
-	md := uint64(0)
-	maxval := uint64(maxvals[c.mdsz])
-	for i := 0; i < c.blknum - c.rsnum; i++ {
-		md = md * maxval + mdblks[i]
-	}
-
-	maxaddr := c.MaxAddr()
-	if md >= 2*maxaddr {
-		sf = true
-		md -= 2*maxaddr
-	}
-
-	if md >= maxaddr {
-		ef = true
-		md -= maxaddr
-	}
-
-	address = md
-	if sf {
-		// invert the data
-		for _, dblk := range data {
-			for i := 0; i < len(dblk); i++ {
-				dblk[i] = ^dblk[i]
-			}
-		}
-	}
-
-	return	
+	address, ef, data, err = c.tryDecode(p5, p3, ol, difficulty)
+	return
 }
-

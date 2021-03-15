@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"strconv"
 	"acoma/oligo"
@@ -23,6 +24,68 @@ type Eop struct {
 	op	byte		// D, I, or R
 	nt	int		// the nt that was deleted, inserted, or replaced
 	nt2	int		// for R, what the nt was replaced to
+}
+
+// given the insertion/deletion/substitution errors per position, generate the entries
+func generateErrorEntries(ierr, derr, serr float64, maxerrs int) (ents []Eentry) {
+	ents = genEentries(ents, 1, 0, nil, ierr, derr, serr, maxerrs)
+
+	// calculate the total of the probabilities
+	var total float64
+	for i := 1; i < len(ents); i++ {
+		total += ents[i].prob
+	}
+
+	fmt.Printf("total %v\n", total)
+	// update the default "no errors" with the remaining to 1
+	ents[0].prob = 1 - total
+
+	// sort
+	sort.Slice(ents, func (i, j int) bool {
+		return ents[i].prob > ents[j].prob
+	})
+
+//	for i := 0; i < len(ents); i++ {
+//		fmt.Printf("%v\n", ents[i])
+//	}
+	return
+}
+
+func genEentries(ents []Eentry, prob float64, lendiff int, ops []Eop, ierr, derr, serr float64, maxerrs int) (ret []Eentry) {
+	if maxerrs <= 0 {
+		return ents
+	}
+
+	oplen := len(ops)
+	ret = append(ents, Eentry { prob, lendiff, ops })
+
+	// insert
+	for nt := 0; nt < 4; nt++ {
+		iops := make([]Eop, oplen + 1)
+		copy(iops, ops)
+		iops[oplen] = Eop { 'I', nt, -1 }
+		ret = genEentries(ret, prob * (ierr / 4), lendiff - 1, iops, ierr, derr, serr, maxerrs - 1)
+	}
+
+	// delete
+	for nt := 0; nt < 4; nt++ {
+		dops := make([]Eop, oplen + 1)
+		copy(dops, ops)
+		dops[oplen] = Eop { 'D', nt, -1 }
+		ret = genEentries(ret, prob * (derr / 4), lendiff + 1, dops, ierr, derr, serr, maxerrs - 1)
+	}
+
+	// substitution
+	for nt := 0; nt < 4; nt++ {
+		for nt2 := 0; nt2 < 4; nt2++ {
+			sops := make([]Eop, oplen + 1)
+			copy(sops, ops)
+			sops[oplen] = Eop { 'R', nt, nt2 }
+			ret = genEentries(ret, prob * (serr / 4), lendiff, sops, ierr, derr, serr, maxerrs - 1)
+		}
+	}
+
+	return
 }
 
 func readErrorEntries(fname string, maxerrs int) (ents []Eentry, err error) {

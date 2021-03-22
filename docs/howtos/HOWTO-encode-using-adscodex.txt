@@ -1,4 +1,4 @@
-Howto use ACOMA to encode a file into a set of oligos on a Macbook pro 
+Howto use ADS Codex to encode a file into a set of oligos on a Macbook pro 
 and a linux system. After following the steps below you will have 
 produced a number of oligos that represent a given file with added redundancy.
 
@@ -8,9 +8,9 @@ modifying src code and then running.
 Assumptions:
    -bash shell
    -17nt datablock size
-   -You have followed HOWTO-setup-go-and-acoma.txt to verify
-    a working go and acoma install
-   -ALTGOPATH points to a path where acoma is installed
+   -You have followed HOWTO-setup-go-and-adscodex.txt to verify
+    a working go and ADS Codex install
+   -ALTGOPATH points to a path where ADS Codex is installed
    -an encode table exists with 17nt oligos and enough entries to facilitate
     encoding the desired file
 
@@ -33,7 +33,7 @@ Assumptions:
 
 2. Plan for oligo length and adjust parameters accordingly
 
-   2.1 17nt is datablock size, this is hardcoded in many places of ACOMA and results
+   2.1 17nt is datablock size, this is hardcoded in many places of ADS Codex and results
        in a 32bit usable block size.
 
 
@@ -41,7 +41,7 @@ Assumptions:
        of metadata blocks an oligo contains as well. For this exercise we choose the default
        of 5 datablocks per oligo. This is currently hardcoded in the file:
        
-       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 3rd parameter 
+       ALTGOPATH/src/adscodex/encode/main.go, line 42, as the 3rd parameter 
        of the function "l2.NewCodec"
 
        Current oligo length is: 17nt/datablock * 5datablocks/oligo = 85nt/oligo
@@ -52,18 +52,18 @@ Assumptions:
        blocks are 5nt in size. We will choose the default of 2 for this exercise. 
        If you would like to modify this value, it is in the file:
        
-       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 5th parameter
+       ALTGOPATH/src/adscodex/encode/main.go, line 42, as the 5th parameter
        of the function "l2.NewCodec" 
 
        Current oligo length is: 85 + 5nt/MD_RS * 2MD_RS/oligo = 95nt/oligo
 
-   2.4 Determine the sizeof a metadata block. ACOMA currently supports either 3, 4, or 5nt
-       metadata blocks. As described in the ACOMA design docs, the amount of addressable
+   2.4 Determine the sizeof a metadata block. ADS Codex currently supports either 3, 4, or 5nt
+       metadata blocks. As described in the ADS Codex design docs, the amount of addressable
        space is governed by number of datablocks, number of RS metadata blocks, and sizeof
        metadata blocks. We will choose the default of 4nt metadatablock size. If you would
        like to modify this value, it is in the file:
 
-       ALTGOPATH/src/acoma/encode/main.go, line 42, as the 4th parameter
+       ALTGOPATH/src/adscodex/encode/main.go, line 42, as the 4th parameter
        of the function "l2.NewCodec"
 
        With our current chosen parameters, we are able to address up to 1608714 addresses
@@ -108,7 +108,7 @@ Assumptions:
 
    5.2 Run encoder tool, redirecting output to a file to store oligos:
 
-         cd ALTGOPATH/src/acoma/
+         cd ALTGOPATH/src/adscodex/
          go run encode/main.go -dseqnum 3 -rseqnum 2 -etbl tbl/encnt17b13.tbl \
             -p3 CAGTGAGCTGGCAACTTCCA -p5 CGACATCTCGATGGCAGCAT $HOME/32kfilerand >> dna.out
 

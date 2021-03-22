@@ -1,5 +1,5 @@
-Howto setup go and acoma on a Macbook pro and a linux system. After following
-the steps below you will have go installed and acoma src code in a place that
+Howto setup go and ADS Codex on a Macbook pro and a linux system. After following
+the steps below you will have go installed and ADS Codex src code in a place that
 go will recognize and be able to run. 
 
 Assumptions:
@@ -42,55 +42,55 @@ Assumptions:
 
        You probably want to add this to your .bashrc
 
-3. Download ACOMA
+3. Download ADS Codex
 
-   3.1 Use git to download a copy of ACOMA src into ALTGOPATH/src/acoma
+   3.1 Use git to download a copy of ACOMA src into ALTGOPATH/src/adscodex
 
-         git clone https://github.com/lanl/acoma.git ALTGOPATH/src/acoma
+         git clone https://github.com/lanl/adscodex.git ALTGOPATH/src/adscodex
 
    3.2 Checkout the appropriate tag or branch:
 
-         cd ALTGOPATH/src/acoma
-         git checkout v0.9
+         cd ALTGOPATH/src/adscodex
+         git checkout v1.0
 
 
 4. Download ACOMA dependencies
 
-   4.1 ACOMA depends on the Reed-Solomon package. It will be installed into $HOME/go/pkg
+   4.1 ADS Codex depends on the Reed-Solomon package. It will be installed into $HOME/go/pkg
        
          go get -u github.com/klauspost/reedsolomon
 
 
-5. Sanity run of ACOMA
+5. Sanity run of ADS Codex
 
-   5.1 You should now be able to run an ACOMA help command. This will dump available opts
+   5.1 You should now be able to run an ADS Codex help command. This will dump available opts
        for ACOMA encode:
 
-         cd ALTGOPATH/src/acoma
+         cd ALTGOPATH/src/adscodex
          go run encode/main.go --help
 
 
-   5.2 Run an ACOMA unit test to confirm correct install, you can run l0 test without
+   5.2 Run an ADS Codex unit test to confirm correct install, you can run l0 test without
        creating lookup tables:
 
-         cd ALTGOPATH/src/acoma/l0/
+         cd ALTGOPATH/src/adscodex/l0/
          go test
 
 6. Download or generate required lookup tables for faster encode/decode
 
    6.1 Rather than generating the tables yourself, you can download pre-built
-       tables from the ACOMA github page. You can skip to step 6.2 if you wish
+       tables from the ADS Codex github page. You can skip to step 6.2 if you wish
        to generate the tables yourself. The zip file is ~1.7GB:
 
-         wget https://github.com/lanl/acoma/releases/download/v0.9/tables.zip
+         wget https://github.com/lanl/adscodex/releases/download/v1.0/tables.zip
 
       If this link gives you trouble, you can navigate to:
 
-         https://github.com/lanl/acoma/releases
+         https://github.com/lanl/adscodex/releases
 
    6.2 After unzipping place the .tbl files into the tbl directory
 
-         cd ALTGOPATH/src/acoma
+         cd ALTGOPATH/src/adscodex
          mkdir tbl
          mv *.tbl tbl/
          
@@ -100,7 +100,7 @@ Assumptions:
        generate larger tables, but you may specify the number of entries. This can take a
        hour or more to run depending on number of entries.
 
-         cd ALTGOPATH/src/acoma/
+         cd ALTGOPATH/src/adscodex/
          mkdir tbl
          go run tblgen/main.go -e tbl/encnt17b13.tbl -l 17 -b 13
          < 
@@ -112,7 +112,7 @@ Assumptions:
    6.3 Generate decode table for 17nt data blocks. Similarly, it is best to generate a
        larger table and do this operation once. It may take hour(s) for this to complete.
 
-         cd ALTOGOPATH/src/acoma/
+         cd ALTOGOPATH/src/adscodex/
          go run tblgen/main.go -d tbl/dent17b7.tbl -l 17 -b 7
          <
            -e represents table name
@@ -129,10 +129,10 @@ Assumptions:
  
        Run the test:
 
-         cd ALTGOPATH/src/acoma/l1
+         cd ALTGOPATH/src/adscodex/l1
          go test
 
-         cd ALTGOPATH/src/acoma/l2
+         cd ALTGOPATH/src/adscodex/l2
          go test
 
-You now have a working go and acoma installation.
+You now have a working go and ADS Codex installation.

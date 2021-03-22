@@ -1,4 +1,4 @@
-Howto use ACOMA to decode a set of oligos into data they represent on a Macbook pro 
+Howto use ADS Codex to decode a set of oligos into data they represent on a Macbook pro 
 and a linux system. After following the steps below you will have produced a file
 containing the data that was previously encoded into oligos.
 
@@ -8,11 +8,11 @@ modifying src code and then running.
 Assumptions:
    -bash shell
    -17nt datablock size
-   -You have followed HOWTO-setup-go-and-acoma.txt to verify
-    a working go and acoma install
-   -You have followed HOWTO-encode-using-acoma.txt to generate the set of oligos
+   -You have followed HOWTO-setup-go-and-adscodex.txt to verify
+    a working go and ADS Codex install
+   -You have followed HOWTO-encode-using-adscodex.txt to generate the set of oligos
     that you are trying to decode.
-   -ALTGOPATH points to a path where acoma is installed
+   -ALTGOPATH points to a path where ADS Codex is installed
    -a decode table exists with 17nt oligos and enough entries to facilitate
     decoding the desired oligos
 
@@ -32,7 +32,7 @@ Assumptions:
 
 2. Edit decoding tool to utilize the parameters that were used when encoding the data
 
-   2.1 17nt is datablock size, this is hardcoded in many places of ACOMA and results
+   2.1 17nt is datablock size, this is hardcoded in many places of ADS Codex and results
        in a 32bit usable block size.
 
 
@@ -40,7 +40,7 @@ Assumptions:
        For this exercise we chose the default of 5 datablocks per oligo.
        This is currently hardcoded in the file:
        
-       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 3rd parameter 
+       ALTGOPATH/src/adscodex/decode/main.go, line 45, as the 3rd parameter 
        of the function "l2.NewCodec"
 
 
@@ -49,14 +49,14 @@ Assumptions:
        We chose the default of 2 for this exercise. 
        If you need to modify this value, it is in the file:
        
-       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 5th parameter
+       ALTGOPATH/src/adscodex/decode/main.go, line 45, as the 5th parameter
        of the function "l2.NewCodec" 
 
    2.4 Set the sizeof a metadata block. 
        We chose the default of 4nt metadatablock size.
        If you need to modify this vlaue, it is in the file:
 
-       ALTGOPATH/src/acoma/decode/main.go, line 45, as the 4th parameter
+       ALTGOPATH/src/adscodex/decode/main.go, line 45, as the 4th parameter
        of the function "l2.NewCodec"
 
 
@@ -97,12 +97,12 @@ Assumptions:
        input file that is oligos separate by newline and output file name for data
        to be placed inside: 
 
-         cd ALTGOPATH/src/acoma/
+         cd ALTGOPATH/src/adscodex/
          go run decode/main.go -dseqnum 3 -rseqnum 2 -dtbl tbl/decnt17b7.tbl \
             -p3 CAGTGAGCTGGCAACTTCCA -p5 CGACATCTCGATGGCAGCAT $HOME/seqs.txt $HOME/decoded.file
    
    5.3 A successful decode will produce no output and you will have a decoded file generated
-       If ACOMA determines there are holes in the file, it will print an error message
+       If ADS Codex determines there are holes in the file, it will print an error message
        to the terminal.
 
 6. Sanity checks

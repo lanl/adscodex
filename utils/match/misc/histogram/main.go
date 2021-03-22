@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"acoma/oligo"
-	"acoma/utils/match/file"
+	"adscodex/oligo"
+	"adscodex/utils/match/file"
 )
 
 type entry struct {

@@ -3,8 +3,8 @@ package main
 import (
 _	"fmt"
 	"runtime"
-	"acoma/oligo"
-	"acoma/utils"
+	"adscodex/oligo"
+	"adscodex/utils"
 )
 
 type Cluster struct {

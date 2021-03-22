@@ -4,7 +4,7 @@ package long
 
 import (
 	"bytes"
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type Oligo struct {

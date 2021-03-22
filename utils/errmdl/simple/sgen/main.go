@@ -6,9 +6,9 @@ _	"errors"
 	"fmt"
 	"os"
 	"time"
-	"acoma/io/csv"
-	"acoma/utils"
-	"acoma/utils/errmdl/simple"
+	"adscodex/io/csv"
+	"adscodex/utils"
+	"adscodex/utils/errmdl/simple"
 )
 
 var num = flag.Int("n", 0, "number of sequences to generate")

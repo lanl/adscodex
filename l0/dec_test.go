@@ -2,8 +2,8 @@ package l0
 
 import (
 	"testing"
-	"acoma/oligo/short"
-	"acoma/criteria"
+	"adscodex/oligo/short"
+	"adscodex/criteria"
 )
 
 func testDecode(t *testing.T, olen int, crit criteria.Criteria) {

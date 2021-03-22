@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"acoma/oligo/short"
-	"acoma/criteria"
+	"adscodex/oligo/short"
+	"adscodex/criteria"
 )
 
 var tblPath = "../tbl"
@@ -111,7 +111,7 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 
 	id, buf = Gint64(buf)
 	if (id>>48) != ('L'<<8 | '0') {
-		return nil, fmt.Errorf("not ACOMA lookup table: got %x expected %x", id>>48, 'L'<<8 | '0')
+		return nil, fmt.Errorf("not ADS Codex lookup table: got %x expected %x", id>>48, 'L'<<8 | '0')
 	}
 
 	id &= 0xFFFFFFFFFFFF	// 48 bits

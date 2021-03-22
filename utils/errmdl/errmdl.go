@@ -1,7 +1,7 @@
 package errmdl
 
 import (
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type ErrMdl interface {

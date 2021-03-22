@@ -4,7 +4,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type Pool struct {

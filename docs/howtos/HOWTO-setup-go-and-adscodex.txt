@@ -44,7 +44,7 @@ Assumptions:
 
 3. Download ADS Codex
 
-   3.1 Use git to download a copy of ACOMA src into ALTGOPATH/src/adscodex
+   3.1 Use git to download a copy of ADS Codex src into ALTGOPATH/src/adscodex
 
          git clone https://github.com/lanl/adscodex.git ALTGOPATH/src/adscodex
 
@@ -54,7 +54,7 @@ Assumptions:
          git checkout v1.0
 
 
-4. Download ACOMA dependencies
+4. Download ADS Codex dependencies
 
    4.1 ADS Codex depends on the Reed-Solomon package. It will be installed into $HOME/go/pkg
        
@@ -64,7 +64,7 @@ Assumptions:
 5. Sanity run of ADS Codex
 
    5.1 You should now be able to run an ADS Codex help command. This will dump available opts
-       for ACOMA encode:
+       for ADS Codex encode:
 
          cd ALTGOPATH/src/adscodex
          go run encode/main.go --help

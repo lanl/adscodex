@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"os"
 	"testing"
-	"acoma/oligo"
-	"acoma/oligo/short"
+	"adscodex/oligo"
+	"adscodex/oligo/short"
 )
 
 var iternum = flag.Int("n", 5, "number of iterations")

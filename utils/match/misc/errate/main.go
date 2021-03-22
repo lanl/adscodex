@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/utils/match/file"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/utils/match/file"
 )
 
 var maxerr = flag.Int("err", 0, "Maximum number of errors for match (0 - any)")

@@ -3,9 +3,9 @@ package simple
 import (
 	"math/rand"
 	"sync"
-	"acoma/oligo"
-	"acoma/oligo/long"
-_	"acoma/utils/errmdl"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+_	"adscodex/utils/errmdl"
 )
 
 type SimpleErrorModel struct {

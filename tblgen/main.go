@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"acoma/l0"
-	"acoma/criteria"
+	"adscodex/l0"
+	"adscodex/criteria"
 )
 
 var encfile = flag.String("e", "", "encoding table file name")

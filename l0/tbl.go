@@ -3,9 +3,9 @@ package l0
 import (
 	"fmt"
 	"math"
-	"acoma/criteria"
-	"acoma/oligo"
-	"acoma/oligo/short"
+	"adscodex/criteria"
+	"adscodex/oligo"
+	"adscodex/oligo/short"
 )
 
 // Lookup tables for all prefixes

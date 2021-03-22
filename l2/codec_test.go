@@ -7,10 +7,10 @@ import (
 	"math/rand"
 	"testing"
 	"time"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/l1"
-	"acoma/utils/errmdl/simple"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/l1"
+	"adscodex/utils/errmdl/simple"
 )
 
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos in an erasure group")

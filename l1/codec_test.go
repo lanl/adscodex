@@ -7,9 +7,9 @@ import (
 	"math/rand"
 	"testing"
 	"time"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/criteria"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/criteria"
 )
 
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")

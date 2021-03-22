@@ -2,8 +2,8 @@ package utils
 
 import (
 _	"fmt"
-	"acoma/oligo"
-	"acoma/oligo/long"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
 )
 
 type Oligo struct {

@@ -4,7 +4,7 @@
 package short
 
 import (
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type Oligo struct {

@@ -7,13 +7,13 @@ import (
 	"sort"
 	"os"
 	"runtime/pprof"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/l0"
-	"acoma/l1"
-	"acoma/l2"
-	"acoma/io/csv"
-	"acoma/io/fastq"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/l0"
+	"adscodex/l1"
+	"adscodex/l2"
+	"adscodex/io/csv"
+	"adscodex/io/fastq"
 )
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")

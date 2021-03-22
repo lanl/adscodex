@@ -21,7 +21,7 @@ Lookup tables speed up significantly ADS Codex. You can generate them
 using the tblgen tool (see below), or download them from github (1.7
 GB file):
 
-https://github.com/lanl/acoma/releases/download/0.9/tables.zip
+https://github.com/lanl/adscodex/releases/download/0.9/tables.zip
 
 Unpack the zip into the tbl directory where the tools and the unit
 tests are expectin the lookup tables.

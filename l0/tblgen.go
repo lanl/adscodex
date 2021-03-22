@@ -1,8 +1,8 @@
 package l0
 
 import (
-	"acoma/criteria"
-	"acoma/oligo/short"
+	"adscodex/criteria"
+	"adscodex/oligo/short"
 )
 
 // Build an encoding table for the specified prefix, oligo length and criteria

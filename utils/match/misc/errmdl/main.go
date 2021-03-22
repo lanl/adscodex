@@ -8,9 +8,9 @@ import (
 	"os"
 	"sort"
 	"sync"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/utils/match/file"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/utils/match/file"
 )
 
 type Op int

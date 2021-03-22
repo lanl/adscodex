@@ -7,12 +7,12 @@ _	"os"
 	"math/rand"
 	"runtime"
 	"time"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/l0"
-	"acoma/l1"
-	"acoma/criteria"
-	"acoma/utils/errmdl/simple"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/l0"
+	"adscodex/l1"
+	"adscodex/criteria"
+	"adscodex/utils/errmdl/simple"
 )
 
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")

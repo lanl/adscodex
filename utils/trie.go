@@ -4,8 +4,8 @@ import (
 _	"fmt"
 _	"errors"
 	"math"
-	"acoma/oligo"
-	"acoma/oligo/long"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
 )
 
 type Trie struct {

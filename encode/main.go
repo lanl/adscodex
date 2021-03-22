@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"acoma/oligo/long"
-	"acoma/l1"
-	"acoma/l2"
+	"adscodex/oligo/long"
+	"adscodex/l1"
+	"adscodex/l2"
 )
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")

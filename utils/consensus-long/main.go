@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 	"container/heap"
-	"acoma/oligo"
-	"acoma/oligo/short"
-	"acoma/oligo/long"
-	"acoma/io/fastq"
-	"acoma/io/csv"
-	"acoma/criteria"
-	"acoma/utils"
+	"adscodex/oligo"
+	"adscodex/oligo/short"
+	"adscodex/oligo/long"
+	"adscodex/io/fastq"
+	"adscodex/io/csv"
+	"adscodex/criteria"
+	"adscodex/utils"
 )
 
 type Kmer string

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"acoma/oligo"
-_	"acoma/oligo/long"
-	"acoma/io/csv"
-	"acoma/utils"
+	"adscodex/oligo"
+_	"adscodex/oligo/long"
+	"adscodex/io/csv"
+	"adscodex/utils"
 //	"sort"
 )
 

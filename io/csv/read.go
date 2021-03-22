@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 	"strings"
-	"acoma/oligo"
-	"acoma/oligo/long"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
 )
 
 func Read(fname string, ignoreBad bool) ([]oligo.Oligo, error) {

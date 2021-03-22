@@ -1,7 +1,7 @@
 package criteria
 
 import (
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type h4g1 int

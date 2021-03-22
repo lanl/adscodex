@@ -10,10 +10,10 @@ import (
 	"math"
 	"os"
 	"sync"
-	"acoma/oligo"
-	"acoma/criteria"
-	"acoma/l0"
-	"acoma/l1"
+	"adscodex/oligo"
+	"adscodex/criteria"
+	"adscodex/l0"
+	"adscodex/l1"
 	"github.com/klauspost/reedsolomon"
 )
 

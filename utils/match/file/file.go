@@ -10,9 +10,9 @@ _	"errors"
 	"runtime"
 	"strconv"
 	"strings"
-	"acoma/oligo"
-	"acoma/oligo/long"
-_	"acoma/utils"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+_	"adscodex/utils"
 )
 
 type Match struct {

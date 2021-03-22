@@ -7,11 +7,11 @@ import (
 	"runtime"
 	"sort"
 	"sync"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/io/fastq"
-	"acoma/io/csv"
-	"acoma/utils"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/io/fastq"
+	"adscodex/io/csv"
+	"adscodex/utils"
 )
 
 type Seq struct {

@@ -327,7 +327,7 @@ func (eg *EcGroup) isComplete(verified bool) bool {
 
 // Calculate the column of a block with position p from row r, with up to maxblks per row
 func ecGroupGetColumn(p, r, maxblks int) int {
-	return  (p + r) % maxblks	// combine blocks diagonally (standard for ACOMA)
+	return  (p + r) % maxblks	// combine blocks diagonally (standard for ADS Codex)
 //	return p			// combine blocks vertically
 }
 

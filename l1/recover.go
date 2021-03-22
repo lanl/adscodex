@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 	"strconv"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/l0"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/l0"
 )
 
 type Eentry struct {

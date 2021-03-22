@@ -1,7 +1,7 @@
 package l0
 
 import (
-	"acoma/criteria"
+	"adscodex/criteria"
 )
 
 func MaxVal(oligoLen int, c criteria.Criteria) int64 {

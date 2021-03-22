@@ -5,9 +5,9 @@ _	"errors"
 _	"fmt"
 	"math/rand"
 	"sync"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/utils/match/file"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/utils/match/file"
 )
 
 type ErrgenErrorModel struct {

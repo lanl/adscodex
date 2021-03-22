@@ -3,8 +3,8 @@ package l0
 import (
 	"math/rand"
 	"testing"
-	"acoma/oligo/short"
-	"acoma/criteria"
+	"adscodex/oligo/short"
+	"adscodex/criteria"
 )
 
 func testEncode(t *testing.T, olen int, crit criteria.Criteria) {

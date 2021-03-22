@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"acoma/oligo"
-	"acoma/oligo/short"
-	"acoma/criteria"
+	"adscodex/oligo"
+	"adscodex/oligo/short"
+	"adscodex/criteria"
 )
 
 var encodeTables map[criteria.Criteria] map[int]*LookupTable;

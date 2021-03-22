@@ -6,11 +6,11 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"acoma/io/csv"
-	"acoma/io/fastq"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/utils"
+	"adscodex/io/csv"
+	"adscodex/io/fastq"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/utils"
 )
 
 var distance = flag.Int("dist", 3, "match distance")

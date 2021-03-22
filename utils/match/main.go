@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"acoma/oligo"
-	"acoma/oligo/long"
-	"acoma/io/csv"
-	"acoma/io/fastq"
-	"acoma/utils"
+	"adscodex/oligo"
+	"adscodex/oligo/long"
+	"adscodex/io/csv"
+	"adscodex/io/fastq"
+	"adscodex/utils"
 )
 
 var printOligos = flag.Bool("p", true, "print oligo and reads for each match")

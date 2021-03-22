@@ -4,7 +4,7 @@ package criteria
 
 import (
 	"fmt"
-	"acoma/oligo"
+	"adscodex/oligo"
 )
 
 type Criteria interface {

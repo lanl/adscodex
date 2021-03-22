@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"sort"
-	"acoma/io/fastq"
+	"adscodex/io/fastq"
 )
 
 var num = flag.Int("n", 0, "number of sequences to select");

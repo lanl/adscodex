@@ -116,6 +116,11 @@ it.
 Decodes the specified list of oligos into a file. If not all data can
 be recovered, the output file might have holes.
 
+### Miscelaneous utilities
+
+The utils directory contains many utilities that can be used to
+analyze sequenced data.
+
 ## Unit Tests
 
 The packages have some limited unit tests that can be run by the

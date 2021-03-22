@@ -1,0 +1,21 @@
+set terminal pdf enhanced size 4.1 in, 1.9 in
+set output 'ecinc2-time.pdf'
+
+#set title "Metadata Error Rate"
+#set xrange [-0.01:1.02]
+#set yrange [0:1]
+#set format x ""
+set ylabel "Average Time (ms)"
+set xlabel "Probability of an error per position (%)"
+set key top right
+
+fname="ecinc2.data"
+plot \
+	"< awk '$6 == 1 { print $0 }' ".fname using 8:16 with lines ls 1 dt 1 title "5",\
+	"< awk '$6 == 2 { print $0 }' ".fname using 8:16 with lines ls 2 dt 2 title "10",\
+	"< awk '$6 == 3 { print $0 }' ".fname using 8:16 with lines ls 3 dt 3 title "15",\
+	"< awk '$6 == 4 { print $0 }' ".fname using 8:16 with lines ls 4 dt 4 title "20",\
+	"< awk '$6 == 5 { print $0 }' ".fname using 8:16 with lines ls 5 dt 5 title "25",\
+	"< awk '$6 == 6 { print $0 }' ".fname using 8:16 with lines ls 6 dt 6 title "30",\
+	"< awk '$6 == 7 { print $0 }' ".fname using 8:16 with lines ls 7 dt 7 title "35",\
+	"< awk '$6 == 8 { print $0 }' ".fname using 8:16 with lines ls 8 dt 8 title "40",\

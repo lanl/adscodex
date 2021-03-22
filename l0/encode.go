@@ -3,6 +3,7 @@ package l0
 import (
 	"errors"
 	"fmt"
+	"os"
 	"acoma/oligo"
 	"acoma/oligo/short"
 	"acoma/criteria"
@@ -56,7 +57,7 @@ func encodeSlow(prefix, oo oligo.Oligo, val uint64, c criteria.Criteria) (o olig
 		}
 
 		if !o.Next() || o.Cmp(oend) >= 0 {
-			return o, fmt.Errorf("value too large: len %d val %d current %v:%d end %v", oo.Len(), val, o, n, oend)
+			return o, fmt.Errorf("value too large: prefix %v len %d val %d current %v:%d end %v", prefix, oo.Len(), val, o, n, oend)
 		}
 
 	}
@@ -95,4 +96,37 @@ func RegisterEncodeTable(lt *LookupTable) error {
 	encodeTables[lt.crit][lt.oligolen] = lt
 
 	return nil
+}
+
+func LoadOrGenerateEncodeTable(oligoLen int, c criteria.Criteria) (err error) {
+	var fname string
+
+	if getEncodeTable(oligoLen, c) != nil {
+		return
+	}
+
+	// first look for file that contains the table
+	for bits := oligoLen * 2; bits >= 0; bits-- {
+		fname = fmt.Sprintf("%s/%s-%02d-%02d.etbl", tblPath, c.String(), oligoLen, bits)
+		_, err = os.Stat(fname)
+		if err == nil {
+			break
+		}
+		fname = ""
+	}
+
+	if fname != "" {
+		err = LoadEncodeTable(fname, c)
+		return
+	}
+
+	// no lookup table on file, generate it
+	if oligoLen > 10 {
+		// but warn if it will take a long time
+		// TODO: should we save it?
+		fmt.Fprintf(os.Stderr, "Warning: generation of lookup table for %d nt, it might take a long time...\n", oligoLen)
+	}
+
+	err = RegisterEncodeTable(BuildEncodingLookupTable(c.FeatureLength(), oligoLen, oligoLen, c))
+	return
 }

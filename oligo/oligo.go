@@ -33,6 +33,9 @@ type Oligo interface {
 	// Returns the nucleotide at position idx, -1 if out of bounds
 	At(idx int) int
 
+	// Sets a new nucleotide value at position idx
+	Set(idx int, nt int)
+
 	// Returns part of the oligo
 	Slice(start, end int) Oligo
 
@@ -67,6 +70,22 @@ func String2Nt(nt string) int {
 	case "C":
 		return C
 	case "G":
+		return G
+	}
+}
+
+// Converts character value of a nt to its numeric value
+func Char2Nt(nt byte) int {
+	switch nt {
+	default:
+		return -1
+	case 'A':
+		return A
+	case 'T':
+		return T
+	case 'C':
+		return C
+	case 'G':
 		return G
 	}
 }
@@ -114,6 +133,47 @@ func Distance(a, b Oligo) int {
 	}
 
 	return f[len(f)-1]
+}
+
+// Match oligo to a pattern. Allows ? for matching any nt
+func Match(a Oligo, p string, maxdist int) bool {
+	b := make([]int, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == '?' {
+			b[i] = -1
+		} else {
+			b[i] = Char2Nt(p[i])
+			if b[i] == -1 {
+				return false
+			}
+		}
+	}
+
+	f := make([]int, len(b) + 1)
+	for j := range f {
+		f[j] = j
+	}
+
+	for n := 0; n < a.Len(); n++ {
+		ca := a.At(n)
+		j := 1
+		fj1 := f[0] // fj1 is the value of f[j - 1] in last iteration
+		f[0]++
+		for m := 0; m < len(b); m++ {
+			cb := b[m]
+			mn := min(f[j]+1, f[j-1]+1) // delete & insert
+			if cb != -1 && cb != ca {
+				mn = min(mn, fj1+1) // change
+			} else {
+				mn = min(mn, fj1) // matched
+			}
+
+			fj1, f[j] = f[j], mn // save f[j] to fj1(j is about to increase), update f[j] to mn
+			j++
+		}
+	}
+
+	return f[len(f)-1] <= maxdist
 }
 
 // Finds subsequence in a sequence, with up to maxdist errors allowed.
@@ -286,5 +346,38 @@ func min2(a, b, aa, bb int) (int, int) {
 		return a, aa
 	} else {
 		return b, bb
+	}
+}
+
+// Reverses an oligo, i.e. nucleotide at position 0 becomes the one at position o.Len(), etc.
+func Reverse(o Oligo) {
+	olen := o.Len()
+	for i := 0; i < olen / 2; i++ {
+		n1 := o.At(i)
+		n2 := o.At(olen - i - 1)
+		o.Set(i, n2)
+		o.Set(olen - i - 1, n1)
+	}
+		
+}
+
+// Inverts an oligo, i.e. A->T, T->A, C->G, G->C
+func Invert(o Oligo)  {
+	for i := 0; i < o.Len(); i++ {
+		nt := o.At(i)
+		switch nt {
+		case A:
+			nt = T
+		case T:
+			nt = A
+		case G:
+			nt = C
+		case C:
+			nt = G
+		default:
+			panic("unknown nucleotide")
+		}
+
+		o.Set(i, nt)
 	}
 }

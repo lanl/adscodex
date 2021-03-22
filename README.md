@@ -1,13 +1,13 @@
-# Adaptive Codec for Organic Molecular Archives (ACOMA)
+# Adaptive Codec for Organic Molecular Archives (ADS Codex)
 
-ACOMA is a DNA storage codec that provides high density and can adapt
+ADS Codex is a DNA storage codec that provides high density and can adapt
 to different requirements for DNA synthesis and sequencing.
 
 ## External Dependencies
 
 ### Reed-Solomon Package
 
-ACOMA depends on https://github.com/klauspost/reedsolomon
+ADS Codex depends on https://github.com/klauspost/reedsolomon
 
 Please install it using 
 
@@ -17,7 +17,7 @@ go get -u github.com/klauspost/reedsolomon
 
 ### Lookup Tables
 
-Lookup tables speed up significantly ACOMA. You can generate them
+Lookup tables speed up significantly ADS Codex. You can generate them
 using the tblgen tool (see below), or download them from github (1.7
 GB file):
 
@@ -28,7 +28,7 @@ tests are expectin the lookup tables.
 
 ## Installation
 
-To get ACOMA clone this repository and build the packages and commands
+To get ADS Codex clone this repository and build the packages and commands
 that you are interested in.
 
 ## Documentation
@@ -63,19 +63,19 @@ with homopolymers longer than 4 nts (for A, T, and C) or 2 nts for G.
 
 ### l0
 
-Level 0 of the ACOMA codec (bit packing). Theoretically it can pack
+Level 0 of the ADS Codex codec (bit packing). Theoretically it can pack
 any value up to 64 bits. In practice it is prohibitively slow to pack
 large values and requires lookup tables even for 17 bit values to
 achieve reasonable performance.
 
 ### l1
 
-Level 1 of the ACOMA codec. Packs an address and array of bytes into a
+Level 1 of the ADS Codex codec. Packs an address and array of bytes into a
 single oligo.
 
 ### l2
 
-Level 2 of the ACOMA codec. Packs an arbitrary array of bytes into a
+Level 2 of the ADS Codex codec. Packs an arbitrary array of bytes into a
 collection of oligos. Provides erasure code oligos for recove of the
 data in case of errors.
 

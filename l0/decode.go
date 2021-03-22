@@ -3,6 +3,7 @@ package l0
 import (
 	"errors"
 	"fmt"
+	"os"
 	"acoma/oligo"
 	"acoma/oligo/short"
 	"acoma/criteria"
@@ -13,7 +14,6 @@ var decodeTables map[criteria.Criteria] map[int]*LookupTable;
 // Decodes the specified oligo into a value
 // Returns error if the value can't be encoded
 func Decode(prefix, o oligo.Oligo, c criteria.Criteria) (val uint64, err error) {
-	var tbl *LookupTable
 	var so oligo.Oligo
 
 	if !c.Check(prefix) {
@@ -26,15 +26,7 @@ func Decode(prefix, o oligo.Oligo, c criteria.Criteria) (val uint64, err error) 
 		return
 	}
 
-	if decodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := decodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[o.Len()]
-		}
-	}
-
+	tbl := getDecodeTable(o.Len(), c)
 	if tbl != nil {
 		// find closest starting point
 		so, val = tbl.decodeLookup(prefix, o)
@@ -104,4 +96,37 @@ func RegisterDecodeTable(lt *LookupTable) error {
 	decodeTables[lt.crit][lt.oligolen] = lt
 
 	return nil
+}
+
+func LoadOrGenerateDecodeTable(oligoLen int, c criteria.Criteria) (err error) {
+	var fname string
+
+	if getDecodeTable(oligoLen, c) != nil {
+		return
+	}
+
+	// first look for file that contains the table
+	for bits := oligoLen * 2; bits >= 0; bits-- {
+		fname = fmt.Sprintf("%s/%s-%02d-%02d.dtbl", tblPath, c.String(), oligoLen, bits)
+		_, err = os.Stat(fname)
+		if err == nil {
+			break
+		}
+		fname = ""
+	}
+
+	if fname != "" {
+		err = LoadDecodeTable(fname, c)
+		return
+	}
+
+	// no lookup table on file, generate it
+	if oligoLen > 10 {
+		// but warn if it will take a long time
+		// TODO: should we save it?
+		fmt.Fprintf(os.Stderr, "Warning: generation of lookup table for %d nt, it might take a long time...\n", oligoLen)
+	}
+
+	err = RegisterDecodeTable(BuildDecodingLookupTable(c.FeatureLength(), oligoLen, oligoLen, c))
+	return
 }

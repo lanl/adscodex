@@ -9,9 +9,17 @@ import (
 	"time"
 	"acoma/oligo"
 	"acoma/oligo/long"
-	"acoma/l0"
 	"acoma/criteria"
 )
+
+var dbnum = flag.Int("dbnum", 5, "number of data blocks")
+var mdsz = flag.Int("mdsz", 4, "metadata block sizee")
+var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
+var mdctype = flag.String("mdctype", "crc", "metadata error detection type (rs or crc)")
+var iternum = flag.Int("iternum", 100, "number of iterations")
+var errnum = flag.Int("errnum", 3, "number of errors")
+var dfclty =  flag.Int("dfclty", 1, "decoding difficulty level")
+var crit = flag.String("crit", "h4g2", "criteria")
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -22,67 +30,50 @@ var cdc *Codec
 var p5, p3 oligo.Oligo
 
 var failed1 = [...]string {
-	"CGACATCTCGATGGCAGCATTGGTTTACCTGTTGAACAAAAGTGATCACACGGACGCACGTTACGTTTAGTCTCGCAGTTCGATCAAACTGTGATTATTAGCGAAGTCAGCAACCAGTCGAAAGGACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATGGACAGACAAAACTACGGTATGTTCGCTACTGTCAAAGGATCAGGACTTTCACTAATAACTCATGAATCTGCCAGTCAATGTCATCAAATGGCGGAAGCATTCACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCCGAATGGTTGCAATCAAAATCCTGCTATACATCCATATTATATAGTGGTGATTGCAAGTCTTGGATAAGTCCGCCGAAACTTATTGTTTTCTCTAGCCCAATGGCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATTATTCAATAGTAGAACGGAACCAAGCTCACTGTCCTGCCTAATGCCACTATGTCATCAACACTACCAAATATCATGAAACGAAACAAGAAGAACTCATGATTCTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCACGTTCGATTCTTGCAAAACCAGCCGGCGCGATGCAGAGTGTCATAATTATCAGCTCGTCCTATGGCGTTCCTATAAACTACTCAGTACGCACGAGAGTAAACTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATTCGTTCACGCTGGAAGATCAGAATATGTGTCACTCACTTTAAACCGTCCCCTTTGCATGGTTCTCATAGAGAAGCTGAAACGATATTCACGAAGTCTCTATGGACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTACCAATAATATGCGGAACGGCACTGTGATCAATGTATCACGTCTGATGTCTTATCCAGTCTTATCTGGTATCTGTTATAGATCTATCACTGCCACTGCGAAGTGTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAGCAAGTACGCCGTATTAAATAATTTTAATGCGCCGATGAGTACAGTGCTCGGCCCAAACGAAACCCAAGCTAAGCCTAATTGTAACTGAAGGCTAGTTGAATTTTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAAGATGAATAGCCGCCTACGGTCGTCTTCAAACTCTTATATTTTAAGACTGTGGTTCTAGGTTCGTTCTAGTCTGGAATAAATAAGGAAAGTGCAGCGACCACGATCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATCAAGTCGCCGCCCGAGGACGCAGTGCGGCAATGCGTACATGACCATAGAACCAGTCCTGGCCATTGTACTCAACGACCATAAGACACTGAACTTAAGTTTGTAATCCCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAACGATCATAATCCACTAAAATTCTTCCCGCAATTGGCACGGTCCTCTCCTGATTTACAACAACAGAGCGCGTACAGTCAACCATGCTCTTTGGCGCAACCATTTGCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATAAACGCCACTCGTGAAAAGACTATCCCTGACAGGCTGCATATCTTACACTCTAGTGCTGCTACTACCTTTGTTCTCTAGCGGAGGCACAGAAAGTGCCGAGGTACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATACGCAGCATGTTTGATCAAATAGAGTGTCCGGCCGGCTGATACAGACAGGCTTACAGATTCCTATCGCCCTGTCGTGTAAACGTTTCAACCACATCTCATAATCCCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATCAGTTCAGTAGAGTTGGACGGTTTTATATGGATTTCCTCCTTAGGTAGAACTCGGCTCGTTACTTACGATCTGCTCATCAAGCAGTACCATTAGCTCACTCAACCGCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCAAATCAAAAGAGATCTATACGCCACGAACTGAGCAGTCCCATACTAGAAAGTGAACTTGAAGTGATCAACGGAGTAGCCTCACTGTAATCGTTACCGGACAGAATGGACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAGTGTCCGTTTCACACGACGCAAGCCCAACCGGAGTAACCTGGTGTGATTACCTGTGTCAATAATTTTGGATATCGATTTAACATCTAAGTCTAAGATAGGTGAGCCACAGTGAGCTGGCAACTTCCA",
 }
 
 var failed2 = [...]string {
-//	"CGACATCTCGATGGCAGCATATGCAGACTAGATCAACAAAATTAGACCAGCTAACTCGAGCTTATCAGTTTGTACTTATTTTGAAATGTACAGCGTAGGAATGATTATACGACAAGTACATAAAGTCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCTGTTCGGTAATTCGGACGGATACCTGTATGAGCTAGTTAGTATGGAGGCGAAGACGAATTAACTCCGCTGAGCCCAAATGAACAAGTGAGAAACCATGGATCCCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAGACACGTATTACACACCGCTGTACCTAAAGCATTTATGGACACCCTTCCTTAGGTACTTGCTCGTAGAATTAGCCAATAAACCTCAATTGCACTCAGTTGACATCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCAGTGACTATTAAAGCAAAATATTTAGTAGCCTAGTGCTGCTTGAGTCGTGGTATGGTAGGCATGTGTGACCGGCAGGAACGAAAGCTTCAAGGAGCACGAATTTTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTAACTGGTTTGTCCACAAGAAAATGTTCGAGCGCTCGTAATCAAACTCATTGGCATCTTTCCGTAGGTGCGATAACACTCATTACTTCTCATAACCTATGTTATGTCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAGGAGCTCATAGCGCCGAAATTGGTTTCGGCTCGGTCCGCTAACTTGCCGATGAGGTGTTAGTCGTCTTAAGCGGCCCAATCGGCTAGCAGATGCTTTGTCAACGACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATCAGGCGCACACTCTCACGCCTAATATACTTAAGGTCTGACTTAACCGACGAAATATCATGAATGGCTTCTCTGTTTGCATATTACGATGACAGTATATTAATCTTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAGCCATCAATGCTCATGAAAACGATCCCATCATACAAAATCCTTCACGACACCGATTATTAATAAAATACTTCAGGAACGATAGAAAACTGTGTGTTATACCAGTAGCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATTGTATAACCGATCAAAGACTTGTACGTGAGCGCACCCAACTCAGTGCATCCAGGTCCTCGTAAAAGGCTTATACGTTCAGATCAAACTAGCAGGTACGGCACCCCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATATACAATTGACACCCGTAAAATTTTCAACCACTCGAATTTCTTCGATATGCTCAACGTTATATACGCTCTCTATCTTAGGATACATCTCAGAAAGCAGGATCAGCCCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATCTTCAGAGTGCAGCTAAAATTTAGATCTCCGCAACTCTCAATAAACGCCTTCTCAAGTCACGCTGGAGGTTCACCTAGCCATTAGTAGGTGTCACCGGATCTAAGTTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATAAGCTCTGTAGAAATATACGGTTATTGGCACATGCACATATCCAAAGGTCATGTGAACCACCAAATGAATAGATGAGGCAGGAAACCCTATGCGTTCAAAGACACCCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTAACTAGGCTCGACAGAACGGACCCAATAGCTCTAACGCATTCAACGCGAGCAGGAGATTAATACCGATAGAGTACGCCGAGGATAGAGTATCAAATTATTTCTTCACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTATCCCCTATGTAGTCGAAATAAGATTCCGTTTGACGCTGGTAACTTGCGATAAAGTGATTCAAACCCGGTCATCCACCTAAAGAAGCATAGAGCTCGGTGGAAGGTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCTAGTACAGCCTTGCAAAACATTAGCACCTCATACGGAGCTATTAGCGATGCATTTAACTAAATTATGTCTCCCAGTTCACGTTTTGGATGACGCTACGCCAATTCAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATACAATCAACAAAACACAAATATAAACACCGCTTTCTCTAGGAAAATACTAGGATATTCAATATATGGCACAGGCTAGGTATAGAAAGTACCACCTTTTGTCATTTACAGTGAGCTGGCAACTTCCA",
-	"CGACATCTCGATGGCAGCATTCAGTCCCTGGTTCACGAAAATCTCATACATGACATGCAGCTAGAAGTTAGCCCTACCCACCAAGCGTCCTGCATATGACAAGACAACCGATGATTCCGTATAACTCCAGTGAGCTGGCAACTTCCA",
 }
 
 
 func initTest(t *testing.T) {
+	var err error
+
 	if cdc != nil {
 		return
 	}
 
-	err := l0.LoadEncodeTable("../tbl/encnt17b13.tbl", criteria.H4G2)
-	if err != nil {
-		t.Fatalf("error while loading encoding table: %v\n", err)
+	c := criteria.Find(*crit)
+	if c == nil {
+		t.Fatalf("criteria '%s' not found\n", *crit)
 	}
-
-	err = l0.LoadDecodeTable("../tbl/decnt17b7.tbl", criteria.H4G2)
-	if err != nil {
-		t.Fatalf("error while loading decoding table: %v\n", err)
-	}
-
-//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 4, 0, criteria.H4G2))
-//	l0.RegisterDecodeTable(l0.BuildDecodingLookupTable(4, 5, 0, criteria.H4G2))
-
+	
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc = NewCodec(5, 4, 2, criteria.H4G2)
+	cdc, err = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	switch *mdctype {
+	default:
+		t.Fatalf("Error: invalid metadata EC type")
+
+	case "crc":
+		err = cdc.SetMetadataChecksum(CSumCRC)
+
+	case "rs":
+		err = cdc.SetMetadataChecksum(CSumRS)
+	}
+
+	if err != nil {
+		t.Fatalf("Error: %v\n", err)
+	}
+
+	if err := cdc.SetErrorModel("163.emdl", 100000); err != nil {
+		t.Fatalf("Error Model Error: %v\n", err)
+	}
 }
 
 func TestEncode(t *testing.T) {
@@ -152,6 +143,8 @@ func TestEncode(t *testing.T) {
 }
 
 func TestRecover2(t *testing.T) {
+	return
+
 	initTest(t)
 
 	for _, s := range failed2 {
@@ -163,55 +156,113 @@ func TestRecover2(t *testing.T) {
 	}
 }
 
+
 func TestRecover(t *testing.T) {
-	return
 	initTest(t)
 
-	// CGACATCTCGATGGCAGCA TGAGCTCAAACTCATGT TACG TCCTTTTGAGTTAACAA ATTCG ATCAGTGAGCTGGCAACTTCCA
-	//                     TGAGCTCAAACTCATGTTACGTCCTTTTGAGTTAACAAATTCG
-	// addr 28 ec true dblks [[33 15 199 187] [129 134 57 172]]
+	nerr := *errnum
+	niter := *iternum
 
-	cdc := NewCodec(2, 4, 1, criteria.H4G2)
-
-	// one insert in the first data block
-	ol, _ := long.FromString("CGACATCTCGATGGCAGCATGGAGCTCAAACTCATGTTACGTCCTTTTGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err := cdc.Decode(p5, p3, ol, 1)
-	if err != nil {
-		t.Fatalf("Error while recovering %v: %v\n", ol, err)
-	} else if daddr != 28 || !dec {
-		t.Fatalf("Error metadata incorrect (%v, %v) expected (28, true)\n", daddr, dec)
+	blks := make([][]byte, cdc.BlockNum())
+	for i := 0; i < len(blks); i++ {
+		blks[i] = make([]byte, cdc.BlockSize())
 	}
 
-//	fmt.Printf("TestRecover insert first %d %v %v %v\n", daddr, dec, dblks, err)
+	errnum := 0
+	errpositive := 0
+	for n := 0; n < niter; n++ {
+		for i := 0; i < len(blks); i++ {
+			for j := 0; j < len(blks[i]); j++ {
+				blks[i][j] = byte(rand.Intn(256))
+			}
+		}
 
-	// one delete in the first data block
-	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAACTCATGTTACGTCCTTTTGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
-	if err != nil {
-		t.Fatalf("Error while recovering %v: %v\n", ol, err)
-	} else if daddr != 28 || !dec {
-		t.Fatalf("Error metadata incorrect (%v, %v) expected (28, true)\n", daddr, dec)
-	}
-//	fmt.Printf("TestRecover delete first %d %v %v %v\n", daddr, dec, dblks, err)
+		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))
+		ec := n%2 == 0
+//		tt := time.Now()
+		ol, err := cdc.Encode(p5, p3, addr, ec, blks)
+//		et := time.Since(tt)
+		if err != nil {
+			t.Fatalf("error while encoding: %v\n", err)
+		}
 
-	// one insert in the second data block
-	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAAACTCATGTTACGTCCTTTTGGAGTTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
-	if err != nil {
-		t.Fatalf("Error while recovering %v: %v\n", ol, err)
-	} else if daddr != 28 || !dec {
-		t.Fatalf("Error metadata incorrect (%v, %v) expected (28, true)\n", daddr, dec)
-	}
-//	fmt.Printf("TestRecover insert second %d %v %v %v\n", daddr, dec, dblks, err)
+		// add some errors
+		seq := ol.String()
+		for i := 0; i < nerr; i++ {
+			idx := rand.Intn(len(seq) - 1)
+			switch rand.Intn(3) {
+			case 0:
+				// delete
+				seq = seq[0:idx] + seq[idx+1:]
 
-	// one delete in the second data block
-	ol, _ = long.FromString("CGACATCTCGATGGCAGCATGAGCTCAAACTCATGTTACGTCCTTTTGAGTAACAAATTCGATCAGTGAGCTGGCAACTTCCA")
-	daddr, dec, _, err = cdc.Decode(p5, p3, ol, 1)
-	if err != nil {
-		t.Fatalf("Error while recovering %v: %v\n", ol, err)
-	} else if daddr != 28 || !dec {
-		t.Fatalf("Error metadata incorrect (%v, %v) expected (28, true)\n", daddr, dec)
+			case 1:
+				// insert
+				seq = seq[0:idx] + oligo.Nt2String(rand.Intn(4)) + seq[idx:]
+
+			case 2:
+				// replace
+				seq = seq[0:idx] + oligo.Nt2String(rand.Intn(4)) + seq[idx+1:]
+			}
+		}
+		eol, _ := long.FromString(seq)
+		
+//		tt = time.Now()
+		daddr, dec, _, err := cdc.Decode(p5, p3, eol, *dfclty)
+//		dt := time.Since(tt)
+
+		if err != nil {
+			errnum++
+		}
+
+		if err == nil && (addr != daddr || ec != dec) {
+			errpositive++
+/*
+			fmt.Printf("! addr %d ec %v ", addr, ec)
+			for _, blk := range blks {
+				fmt.Printf("{ ")
+				for _, v := range blk {
+					fmt.Printf("%d, ", v)
+				}
+				fmt.Printf("}, ")
+			}
+			fmt.Printf("\n")
+
+			fmt.Printf("- %v\n", ol)
+			fmt.Printf("+ %v\n", eol)
+*/
+		}
+/*
+		if err != nil {
+			t.Fatalf("error while decoding: %v\n", err)
+		}
+
+		if addr != daddr {
+			t.Fatalf("addresses don't match: %v %v\n", addr, daddr)
+		}
+
+		if ec != dec {
+			t.Fatalf("erasure flag doesn't match: %v %v\n", ec, dec)
+		}
+*/
+
+//		fmt.Printf("orig: %v\nerr:  %v %v %v\n", ol, eol, et, dt)
+
 	}
-//	fmt.Printf("TestRecover delete second %d %v %v %v\n", daddr, dec, dblks, err)
+
+//	fmt.Printf("error rate %v false positive rate %v\n", float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
+	fmt.Printf("%d %d %d %s %d %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
 }
 
+func TestRecover3(t *testing.T) {
+	return
+
+	initTest(t)
+
+	addr := uint64(776854)
+	ec := true
+	data := [][]byte { { 154, 0, 250, 51, }, { 18, 203, 161, 93, }, { 195, 108, 106, 133, }, { 191, 162, 73, 60, }, { 4, 22, 210, 242, },}
+	cdc.Encode(p5, p3, addr, ec, data)
+
+	eol, _ := long.FromString("CGACATCTCGATGGCAGCATATGGTGTCAGTAACTGTGTCATTAGCAGACCACGACTACCCGATATTACTGGAAGAGAAGTTTGCGACTACCTTAGTCCCTGCCGTACTTTCGCGTAGTGTAGATATGGCAGTGAGCTGGCAACTTCCA")
+	cdc.Decode(p5, p3, eol, 1)
+}

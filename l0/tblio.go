@@ -4,11 +4,18 @@ package l0
 // TODO: describe the on-disk format
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"acoma/oligo/short"
 	"acoma/criteria"
 )
+
+var tblPath = "../tbl"
+
+func SetLookupTablePath(path string) {
+	tblPath = path
+}
 
 func (tbl *Table) Write(w io.Writer) (err error) {
 	var buf []byte
@@ -17,11 +24,13 @@ func (tbl *Table) Write(w io.Writer) (err error) {
 		buf = Pint32(0, buf)
 		buf = Pint32(0, buf)
 		buf = Pint64(0, buf)
+		buf = Pint64(0, buf)
 		buf = Pint32(0, buf)
 	} else {
 		buf = Pint32(uint32(tbl.bits), buf)
 		buf = Pint32(uint32(tbl.prefix.Len()), buf)
 		buf = Pint64(tbl.prefix.Uint64(), buf)
+		buf = Pint64(tbl.maxval, buf)
 		buf = Pint32(uint32(len(tbl.tbl)), buf)
 
 		for _, n := range tbl.tbl {
@@ -39,12 +48,12 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	var v64 uint64
 	var p []byte
 
-	buf := make([]byte, 20)
+	buf := make([]byte, 28)
 
 	n, err = r.Read(buf)
 	if err != nil {
 		return
-	} else if n != 20 {
+	} else if n != 28 {
 		return errors.New("short read")
 	}
 
@@ -54,6 +63,7 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	v64, p = Gint64(p)
 	tbl.prefix = short.Val(int(v), v64)
 
+	tbl.maxval, p = Gint64(p)
 	v, p = Gint32(p)
 	tlen := int(v)
 
@@ -82,6 +92,7 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err error) {
 	var f *os.File
 	var v uint32
+	var id uint64
 	var n int
 
 	f, err = os.Open(fname)
@@ -90,7 +101,7 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 	}
 	defer f.Close()
 
-	buf := make([]byte, 8)
+	buf := make([]byte, 16)
 	n, err = f.Read(buf)
 	if err != nil {
 		return
@@ -98,6 +109,16 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 		return nil, errors.New("short read")
 	}
 
+	id, buf = Gint64(buf)
+	if (id>>48) != ('L'<<8 | '0') {
+		return nil, fmt.Errorf("not ACOMA lookup table: got %x expected %x", id>>48, 'L'<<8 | '0')
+	}
+
+	id &= 0xFFFFFFFFFFFF	// 48 bits
+	if id != crit.Id() {
+		return nil, fmt.Errorf("criteria mistmatch: got %x expected %x", id, crit.Id())
+	}
+	
 	lt = new(LookupTable)
 	v, buf = Gint32(buf)
 	lt.oligolen = int(v)
@@ -131,7 +152,9 @@ func (lt *LookupTable) Write(fname string) (err error) {
 	}
 	defer f.Close()
 
-	buf := Pint32(uint32(lt.oligolen), nil)
+	id := ('L'<<56 | '0'<<48) | lt.crit.Id()
+	buf := Pint64(id, nil)
+	buf = Pint32(uint32(lt.oligolen), buf)
 	buf = Pint32(uint32(lt.pfxlen), buf)
 	_, err = f.Write(buf)
 	if err != nil {

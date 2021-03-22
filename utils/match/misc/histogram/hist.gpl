@@ -1,0 +1,11 @@
+set terminal pdf enhanced
+set output 'hist.pdf'
+#set title "Match distribution by strand length"
+
+set xrange [-1000:]
+#set yrange [-2:]
+#set format x ""
+#set ylabel "Count"
+
+plot \
+	"m.hist" using 1:2 with lines

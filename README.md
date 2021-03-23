@@ -30,7 +30,7 @@ tests are expectin the lookup tables.
 
 To get ADS Codex clone this repository and build the packages and commands
 that you are interested in. The description in
-docs/howtos/HOWTO-setup-go-and adscodex.txt has more detailed
+docs/howtos/HOWTO-setup-go-and-adscodex.txt has more detailed
 information on how to build it.
 
 ## Documentation

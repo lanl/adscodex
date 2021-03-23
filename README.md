@@ -21,7 +21,7 @@ Lookup tables speed up significantly ADS Codex. You can generate them
 using the tblgen tool (see below), or download them from github (1.7
 GB file):
 
-https://github.com/lanl/adscodex/releases/download/0.9/tables.zip
+https://github.com/lanl/adscodex/releases/download/1.0/tables.zip
 
 Unpack the zip into the tbl directory where the tools and the unit
 tests are expectin the lookup tables.
@@ -29,13 +29,18 @@ tests are expectin the lookup tables.
 ## Installation
 
 To get ADS Codex clone this repository and build the packages and commands
-that you are interested in.
+that you are interested in. The description in
+docs/howtos/HOWTO-setup-go-and adscodex.txt has more detailed
+information on how to build it.
 
 ## Documentation
 
 The specification of the codec is located in the slides located in the
 doc directory. More documentation on the implementation is located in
 the source code.
+
+The HOWTO documents in docs/howtos have more information on how to
+encode and decode data with ADS Codex.
 
 ## Packages
 

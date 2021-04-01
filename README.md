@@ -1,4 +1,4 @@
-# Adaptive Codec for Organic Molecular Archives (ADS Codex)
+# Adaptive DNA Storage Codec (ADS Codex)
 
 ADS Codex is a DNA storage codec that provides high density and can adapt
 to different requirements for DNA synthesis and sequencing.

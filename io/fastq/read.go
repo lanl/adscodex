@@ -58,7 +58,7 @@ func Parse(fname string, process func(id, sequence string, quality []byte, rever
 	for sc.Scan() {
 		// id line
 		ls := strings.Split(sc.Text(), " ")
-		if len(ls) != 2 {
+		if len(ls) < 2 {
 			return errors.New("invalid id line: '" + sc.Text() + "'")
 		}
 		id := ls[0]
@@ -88,15 +88,31 @@ func Parse(fname string, process func(id, sequence string, quality []byte, rever
 			qa[i] = byte(c) - 33 // '!'
 		}
 
-		// this is Illumina specific way to figure out if the oligo is
-		// straight or reverse of a pair
-		reverse := false
-		if ls[1][0] == '2' {
-			reverse = true
-		}
+		// This is sequencer specific. For Illumina it finds out the forward/reverse
+		// read based on the first character of the second field of the ID line. If 
+		// it is '1' the read is forward, if it is '2', the read is reverse.
+		// If it is neither (hopefully all other sequencers), we treat the read as
+		// BOTH forward and reverse. 
+		illuminaflag := ls[1][0] == '1' || ls[1][0] == '2'
+		if illuminaflag {
+			reverse := false
+			if ls[1][0] == '2' {
+				reverse = true
+			}
 
-		if err := process(id, seq, qa, reverse); err != nil {
-			return err
+			if err := process(id, seq, qa, reverse); err != nil {
+				return err
+			}
+		} else {
+			// process the read as both forward and reverse
+
+			if err := process(id, seq, qa, false); err != nil {
+				return err
+			}
+
+			if err := process(id, seq, qa, true); err != nil {
+				return err
+			}
 		}
 	}
 

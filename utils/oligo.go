@@ -65,7 +65,7 @@ func (o *Oligo) Len() int {
 }
 
 func (o *Oligo) String() string {
-	if o == nil {
+	if o == nil || o.ol == nil {
 		return ""
 	}
 

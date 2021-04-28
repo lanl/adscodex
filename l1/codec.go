@@ -14,7 +14,7 @@ _	"os"
 )
 
 const (
-	PrimerErrors = 3	// how many errors still match the primer
+	PrimerErrors = 5	// how many errors still match the primer
 )
 
 const (

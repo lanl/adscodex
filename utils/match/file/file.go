@@ -72,6 +72,7 @@ func Parse(fname string, process func(id, count int, diff string, cubu float64, 
 		r = cf
 	} else {
 		r = f
+		f.Seek(0, 0)
 	}
 
 	sc := bufio.NewScanner(r)
@@ -93,11 +94,11 @@ func Parse(fname string, process func(id, count int, diff string, cubu float64, 
 			ls = strings.Split(line, ",")
 		}
 
-		if n, e := strconv.ParseUint(ls[0], 10, 32); e != nil {
-			err = e
+		if nn, e := strconv.ParseUint(ls[0], 10, 32); e != nil {
+			err = fmt.Errorf("invalid line: %d: %v\n", n, line)
 			return
 		} else {
-			id = int(n)
+			id = int(nn)
 		}
 
 		if len(ls) < 2 {

@@ -60,7 +60,7 @@ func main() {
 	scount = make(map[int]uint64)
 	acount = make(map[int]uint64)
 	n := 0
-	cnt := 0
+	var cnt uint64
 	var err error
 	for fn := 0; fn < flag.NArg(); fn++ {
 		err = file.ParseParallel(flag.Arg(fn), 0, func(id, count int, diff string, cubu float64, orig, read oligo.Oligo) {
@@ -159,21 +159,21 @@ func main() {
 				}
 			}
 
-			if icnt != 0 && dcnt == 0 && scnt == 0 {
+			if /*icnt != 0 &&*/ dcnt == 0 && scnt == 0 {
 				icount[icnt] += uint64(count)
 			}
 
-			if dcnt != 0 && icnt == 0 && scnt == 0 {
+			if /*dcnt != 0 &&*/ icnt == 0 && scnt == 0 {
 				dcount[dcnt] += uint64(count)
 			}
 
-			if scnt != 0 && dcnt == 0 && icnt == 0 {
+			if /*scnt != 0 &&*/ dcnt == 0 && icnt == 0 {
 				scount[scnt] += uint64(count)
 			}
 
 			acount[icnt + dcnt + scnt] += uint64(count)
 			n++
-			cnt += count
+			cnt += uint64(count)
 			mutex.Unlock()
 
 			if n%100000 == 0 {
@@ -236,10 +236,16 @@ func main() {
 	fmt.Printf("\t%.2f\n", float64(total * 100)/float64(errsub))
 
 	fmt.Printf("Errors per count\n")
+	var tot float64
 	for i := 0; i < 1000; i++ {
 		c := acount[i]
 		if c != 0 {
-			fmt.Printf("\t%d\t%v\t%v\t%v\t%v\n", i, float64(c * 100) / float64(cnt), float64(icount[i]*100)/float64(cnt),float64(dcount[i]*100)/float64(cnt),float64(scount[i]*100)/float64(cnt))
+			f := float64(c * 100) / float64(cnt)
+			tot += f
+			fmt.Printf("\t%d\t%v\n", i, f)
+//			fmt.Printf("\t%d\t%v\t%v\t%v\t%v\n", i, float64(c * 100) / float64(cnt), float64(icount[i]*100)/float64(cnt),float64(dcount[i]*100)/float64(cnt),float64(scount[i]*100)/float64(cnt))
 		}
 	}
+
+	fmt.Printf("%v\n", tot)
 }

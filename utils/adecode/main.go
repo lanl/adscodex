@@ -54,6 +54,7 @@ func main() {
 		return
 	}
 	cdc.SetCompat(*compat)
+	cdc.SetSimpleErrorModel(0.012, 0.044, 0.027, 7)
 
 	if flag.NArg() != 2 {
 		fmt.Printf("Expecting file name\n");

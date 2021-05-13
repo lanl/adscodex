@@ -112,6 +112,11 @@ func (c *Codec) SetVerbose(v bool) {
 	c.verbose = v
 }
 
+func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
+	c.c1.SetSimpleErrorModel(ierr, derr, serr, maxerrs)
+}
+
+
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()
 }

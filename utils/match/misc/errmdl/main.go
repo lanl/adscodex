@@ -65,6 +65,51 @@ func (nd *Node) Add(op Op, nt, nt2 int) *Node {
 	return c
 }
 
+// adds a chain of nodes (each node needs to have only one child)
+func (nd *Node) AddNodes(nds *Node) {
+	nd.Lock()
+	defer nd.Unlock()
+
+	for nds != nil {
+		var next *Node
+		var chld *Node
+
+		nd.Lock()
+		for _, c := range nd.children {
+			if c.op == nds.op && c.nt == nds.nt && c.nt2 == nds.nt2 {
+				chld = c
+				break
+			}
+		}
+
+		if chld != nil {
+			nd.Unlock()
+			chld.Lock()
+			chld.count += nds.count
+			chld.Unlock()
+			nd = chld
+		} else {
+			nd.children = append(nd.children, nds)
+			nd.Unlock()
+
+			// if we couldn't find a child that is the same
+			// as nds, then we can safely add the whole 
+			// chain and get out
+			break
+		}
+
+		// find the next
+		for _, c := range nds.children {
+			if c != nil {
+				next = c
+				break
+			}
+		}
+
+		nds = next
+	}
+}
+
 func (nd *Node) Visit(visit func(c *Node)) {
 	visit(nd);
 	for _, c := range nd.children {

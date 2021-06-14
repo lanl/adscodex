@@ -30,6 +30,7 @@ var datasetFile = flag.String("ds", "", "dataset file")
 var ftype = flag.String("t", "fastq", "file type")
 var oligolen = flag.Int("l", 0, "if not zero, select only oligos with length +/- 10% of the specified value")
 var useqscore = flag.Bool("q", true, "use quality score (if available)")
+var pcut = flag.Bool("pcut", false, "remove the primers")
 
 var pr5, pr3 oligo.Oligo
 var dspool *utils.Pool
@@ -73,7 +74,7 @@ func main() {
 			return
 		}
 
-		dspool.Trim(pr5, pr3, *pdist, true)
+		dspool.Trim(pr5, pr3, *pdist, !*pcut)
 		if err := dspool.InitSearch(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
@@ -202,7 +203,7 @@ func seqproc(ch chan Seq, ech chan bool) {
 			ol.Invert()
 		}
 
-		tol1 := ol.Trim(pr5, pr3, *pdist, true)
+		tol1 := ol.Trim(pr5, pr3, *pdist, !*pcut)
 		if tol1 == nil {
 			continue
 		}
@@ -211,7 +212,7 @@ func seqproc(ch chan Seq, ech chan bool) {
 		if *oligolen != 0 {
 			tlen := float64(tol.Len())
 			olen := float64(*oligolen)
-			if tlen < olen*0.9 || tlen > olen*1.1 {
+			if tlen < olen*0.85 || tlen > olen*1.15 {
 				continue
 			}
 		}

@@ -1,11 +1,13 @@
 package simple
 
 import (
+	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
-_	"adscodex/utils/errmdl"
+	"adscodex/utils/errmdl"
 )
 
 type SimpleErrorModel struct {
@@ -144,4 +146,84 @@ func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []olig
 */
 	return
 
+}
+
+func (em *SimpleErrorModel) SortedErrors(ol oligo.Oligo, minprob float64) (ret []errmdl.OligoProb) {
+	fmt.Printf("Sorted Errors: insertion %v deletion %v substitutions %v\n", em.erri, em.errdi - em.erri, em.err - em.errdi)
+	m := make(map[string] float64)
+
+	seq := ol.String()
+	em.genErrors("", seq, 1, minprob, m)
+
+	n := 0
+	for _, p := range m {
+		if p >= minprob {
+			n++
+		}
+	}
+
+	ols := make([]errmdl.OligoProb, n)
+	n = 0
+	for s, p := range(m) {
+		if p >= minprob {
+			ols[n].Ol, _ = long.FromString(s)
+			ols[n].Prob = p
+			n++
+		}
+	}
+
+	sort.Slice(ols, func(i, j int) bool {
+		return ols[i].Prob > ols[j].Prob
+	})
+
+	return ols
+}
+
+func (em *SimpleErrorModel) genErrors(prefix, suffix string, err, minerr float64, m map[string] float64) {
+//	ind := ""
+//	for i := 0; i < len(prefix); i++ {
+//		ind += " ";
+//	}
+
+	if err < minerr {
+//		fmt.Printf("%s< %v %v\n", ind, err, minerr)
+		return
+	}
+
+	if len(suffix) == 0 {
+//		fmt.Printf("%s= %v err %v\n", ind, prefix, err)
+		m[prefix] += err
+		return
+	}
+
+//	fmt.Printf("%sprefix %v suffix %v err %v\n", ind, prefix, suffix, err)
+	// no error
+//	fmt.Printf("%s--- no errors\n", ind)
+	em.genErrors(prefix + string(suffix[0]), suffix[1:], err * (1 - em.err), minerr, m)
+
+	// insertion errors
+//	fmt.Printf("%s--- insertions\n", ind)
+	e := err * (em.erri/4)
+	em.genErrors(prefix + string('A'), suffix, e, minerr, m)
+	em.genErrors(prefix + string('T'), suffix, e, minerr, m)
+	em.genErrors(prefix + string('C'), suffix, e, minerr, m)
+	em.genErrors(prefix + string('G'), suffix, e, minerr, m)
+
+	// deletion error
+//	fmt.Printf("%s--- deletions\n", ind)
+	e = err * (em.errdi - em.erri)
+	em.genErrors(prefix, suffix[1:], e, minerr, m)
+
+	// substitusion errors
+//	fmt.Printf("%s--- substitusions\n", ind)
+	e = err * ((em.err - em.errdi)/4)
+	s := suffix[0]
+	suff := suffix[1:]
+
+	for n := 0; n < 4; n++ {
+		nt := oligo.Nt2String(n)[0]
+		if nt != s {
+			em.genErrors(prefix + string(nt), suff, e, minerr, m)
+		}
+	}
 }

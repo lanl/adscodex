@@ -36,7 +36,7 @@ func generateErrorEntries(ierr, derr, serr float64, maxerrs int) (ents []Eentry)
 		total += ents[i].prob
 	}
 
-	fmt.Printf("total %v\n", total)
+//	fmt.Printf("total %v\n", total)
 	// update the default "no errors" with the remaining to 1
 	ents[0].prob = 1 - total
 

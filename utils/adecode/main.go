@@ -54,7 +54,7 @@ func main() {
 		return
 	}
 	cdc.SetCompat(*compat)
-	cdc.SetSimpleErrorModel(0.012, 0.044, 0.027, 7)
+	cdc.SetSimpleErrorModel(0.012, 0.044, 0.027, 6)
 
 	if flag.NArg() != 2 {
 		fmt.Printf("Expecting file name\n");
@@ -152,7 +152,7 @@ func main() {
 	exts := ""
 	ver := ""
 	if nidx < len(data) {
-		exts = fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Verified)
+		exts = fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Type)
 	}
 	for i := 0; i < len(recs); i++ {
 		r := &recs[i]
@@ -166,7 +166,7 @@ func main() {
 			fmt.Printf("*** %s %s\n", ver, exts)
 			ver = ""
 			if nidx < len(data) {
-				exts = fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Verified)
+				exts = fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Type)
 			} else {
 				exts = ""
 			}
@@ -253,7 +253,7 @@ func main() {
 
 				nidx++
 				if nidx < len(data) {
-					exts += fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Verified)
+					exts += fmt.Sprintf("(%d, %d, %v) ", data[nidx].Offset, data[nidx].Offset + uint64(len(data[nidx].Data)), data[nidx].Type)
 				}
 			}
 
@@ -261,10 +261,14 @@ func main() {
 				de := &data[nidx]
 				dend := de.Offset + uint64(len(de.Data))
 				if off >= de.Offset && off < dend {
-					if de.Verified {
+					if de.Type == l2.FileVerified {
 						ver += "V"
-					} else {
+					} else if de.Type == l2.FileUnverified {
 						ver += "U"
+					} else if de.Type == l2.FileBestGuess {
+						ver += "G"
+					} else {
+						ver += "?"
 					}
 				} else {
 					ver += "H"

@@ -7,7 +7,11 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-type Blk []byte
+type Blk struct {
+	b	[]byte
+	n	int
+}
+
 type Blkset []Blk
 
 // Represent a data block from the original encoding
@@ -38,41 +42,73 @@ const (
 )
 
 func (db Blk) Bytes() []byte {
-	return []byte(db)
+	return db.b
 }
 
+func (db Blk) Count() int {
+	return db.n
+}
+
+
 // Checks if db is in the set of blocks
-func (ds Blkset) Exist(db Blk) (found bool) {
+func (ds Blkset) Find(d []byte) *Blk {
 	if ds == nil {
-			return
+			return nil
 	}
 
-	for _, b := range ds {
+	for idx := range ds {
+		b := &ds[idx]
 		match := true
-		for i, v := range b {
-			if v != db[i] {
+		for i, v := range b.b {
+			if v != d[i] {
 				match = false
 				break
 			}
 		}
 
 		if match {
-			found = true
-			break
+			return b
 		}
+	}
+
+	return nil
+}
+
+// Add block to the set of blocks
+func (ds Blkset) Add(d []byte) (ret Blkset, added bool) {
+	if b := ds.Find(d); b != nil {
+		b.n++
+		ret = ds
+	} else {
+		ret = append([]Blk(ds), Blk{d, 1})
+		added = true
 	}
 
 	return
 }
 
-// Add block to the set of blocks
-func (ds Blkset) Add(db Blk) (ret Blkset) {
-	return append([]Blk(ds), db)
-}
-
 // Convert the set to slice of blocks
 func (ds Blkset) Blks() []Blk {
 	return []Blk(ds)
+}
+
+func (ds Blkset) Best() (ret []Blk) {
+	max := 0
+	for idx := range ds {
+		b := &ds[idx]
+		if b.n < max {
+			continue
+		}
+
+		if b.n > max {
+			max = b.n
+			ret = nil
+		}
+
+		ret = append(ret, *b)
+	}
+
+	return
 }
 
 func newEcGroup(rows, cols int) (eg *EcGroup) {
@@ -119,12 +155,14 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 	c := eg.cols[col]
 
 	// check if the block is already present
-	if c.elems[row].bset.Exist(db) {
+	if bs, added := c.elems[row].bset.Add(db.b); !added {
 //		if eg.verbose {
 //			fmt.Fprintf(os.Stderr, "-+- row %d col %d %v %v\n", row, col, db, c.elems[row].bset)
 //		}
 
 		return false
+	} else {
+		c.elems[row].bset = bs
 	}
 
 	if eg.verbose {
@@ -238,19 +276,17 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 		// copy the data to the appropriate set		
 		for i := 0; i < len(c.elems); i++ {
 			if verified {
-				if !c.elems[i].vdata.Exist(shards[i]) {
-					c.elems[i].vdata = c.elems[i].vdata.Add(shards[i])
-					if eg.verbose {
-						fmt.Fprintf(os.Stderr, "\tVVV %d %v\n", i, c.elems[i].vdata)
-					}
+				var added bool
+				c.elems[i].vdata, added = c.elems[i].vdata.Add(shards[i])
+				if added && eg.verbose {
+					fmt.Fprintf(os.Stderr, "\tVVV %d %v\n", i, c.elems[i].vdata)
 				}
 			} else {
-				if !c.elems[i].uvdata.Exist(shards[i]) {
-					c.elems[i].uvdata = c.elems[i].uvdata.Add(shards[i])
+				var added bool
+				c.elems[i].uvdata, added = c.elems[i].uvdata.Add(shards[i])
 
-					if eg.verbose {
-						fmt.Fprintf(os.Stderr, "\tUUU %d %v\n", i, c.elems[i].uvdata)
-					}
+				if added && eg.verbose {
+					fmt.Fprintf(os.Stderr, "\tUUU %d %v\n", i, c.elems[i].uvdata)
 				}
 			}
 		}
@@ -259,22 +295,16 @@ func (eg *EcGroup) addBlock(row, col int, db Blk, ecnum int, rsenc reedsolomon.E
 		ret = true
 	}
 
-	c.elems[row].bset = c.elems[row].bset.Add(db)
-	
 	return
 }
 
 // Returns all the verified data for the specified element in the EcGroup
 func (eg *EcGroup) getVerified(row, col int) (blks []Blk) {
-	eg.Lock()
 	if eg == nil {
-		panic("eg == nil")
+		return nil
 	}
 
-	if eg.cols == nil {
-		panic("eg.cols == nil")
-	}
-
+	eg.Lock()
 	cidx := ecGroupReverseColumn(col, row, len(eg.cols))
 	c := eg.cols[cidx]
 	el := &c.elems[row]
@@ -289,8 +319,11 @@ func (eg *EcGroup) getVerified(row, col int) (blks []Blk) {
 
 // Returns the unverified data for the specified element in the EcGroup
 func (eg *EcGroup) getUnverified(row, col int) (blks []Blk) {
-	eg.Lock()
+	if eg == nil {
+		return nil
+	}
 
+	eg.Lock()
 	cidx := ecGroupReverseColumn(col, row, len(eg.cols))
 	c := eg.cols[cidx]
 	el := &c.elems[row]
@@ -299,6 +332,27 @@ func (eg *EcGroup) getUnverified(row, col int) (blks []Blk) {
 
 	if eg.verbose {
 		fmt.Fprintf(os.Stderr, "getUnverified %d %d: cidx %d: %v\n", row, col, cidx, blks)
+	}
+	return
+}
+
+// Returns the best possible data in case that we can't even recover unverified data
+// "The best" means the data from the block with the highest count (if one).
+func (eg *EcGroup) getBestGuess(row, col int) (blks []Blk) {
+	if eg == nil {
+		return nil
+	}
+
+	eg.Lock()
+
+	cidx := ecGroupReverseColumn(col, row, len(eg.cols))
+	c := eg.cols[cidx]
+	el := &c.elems[row]
+	blks = el.bset.Best()
+	eg.Unlock()
+
+	if eg.verbose {
+		fmt.Fprintf(os.Stderr, "getBestGuess %d %d: cidx %d: %v\n", row, col, cidx, blks)
 	}
 	return
 }
@@ -405,7 +459,7 @@ func ecGroupDecode(offset uint64, elems [][][]byte) (dss []DataExtent) {
 	for _, row := range elems {
 		for _, el := range row {
 			if len(d) != 0 && off+uint64(len(d)) != offset {
-				dss = append(dss, DataExtent{ off, d, false })
+				dss = append(dss, DataExtent{ off, d, FileHole })
 				off = offset
 				d = nil
 			}

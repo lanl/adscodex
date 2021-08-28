@@ -134,7 +134,7 @@ func main() {
 		return
 	}
 
-	var vsz, usz, hsz, off uint64
+	var vsz, usz, bsz, hsz, off uint64
 	for i := 0; i < len(data); i++ {
 		d := &data[i]
 		if d.Offset != off {
@@ -145,10 +145,16 @@ func main() {
 			hsz += d.Offset - off
 		}
 
-		if d.Verified {
-			vsz += uint64(len(d.Data))
-		} else {
-			usz += uint64(len(d.Data))
+		l := uint64(len(d.Data))
+		switch d.Type {
+		case l2.FileVerified:
+			vsz += l
+
+		case l2.FileUnverified:
+			usz += l
+
+		case l2.FileBestGuess:
+			bsz += l
 		}
 
 		off = d.Offset + uint64(len(d.Data))
@@ -162,5 +168,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: not all data was recovered, the file has holes\n")
 	}
 
-	fmt.Fprintf(os.Stderr, "%d bytes verified, %d unverified, %d holes\n", vsz, usz, hsz)
+	fmt.Fprintf(os.Stderr, "%d bytes verified, %d unverified, %d best guess %d holes\n", vsz, usz, bsz, hsz)
 }

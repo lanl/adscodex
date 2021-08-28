@@ -53,6 +53,7 @@ const (
 	FileHole = 1 << iota
 	FileVerified
 	FileUnverified
+	FileBestGuess
 	FileMulti
 )
 
@@ -124,7 +125,7 @@ func (f *File) close() (data []DataExtent) {
 
 		if data != nil {
 			last := &data[len(data) - 1]
-			if last.Offset + uint64(len(last.Data)) == ds[0].Offset && last.Verified == ds[0].Verified {
+			if last.Offset + uint64(len(last.Data)) == ds[0].Offset && last.Type == ds[0].Type {
 				last.Data = append(last.Data, ds[0].Data...)
 				ds = ds[1:]
 			}
@@ -230,7 +231,7 @@ add:
 	return eg.addEntry(row, dblks, f.erows, f.ec)
 }
 
-func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, dtype int, vblks []Blk, ublks []Blk) bool) {
+func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, dtype int, blks []Blk) bool) {
 	f.RLock()
 	defer f.RUnlock()
 
@@ -257,15 +258,11 @@ func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, 
 //			fmt.Fprintf(os.Stderr, "    row %d\n", row)
 			for ; col < f.cols; col++ {
 				var ft int
-				var vd, ud []Blk
+				var blks []Blk
 
-				if eg != nil {
-					vd = eg.getVerified(row, col)
-					ud = eg.getUnverified(row, col)
-//					fmt.Fprintf(os.Stderr, "\trow %d col %d vd %v ud %v\n", row, col, vd, ud)
-				}
-
-				switch len(vd) {
+				// first try the verified blocks
+				blks = eg.getVerified(row, col)
+				switch len(blks) {
 				case 0:
 					// nothing
 				case 1:
@@ -274,14 +271,16 @@ func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, 
 					ft = FileVerified | FileMulti
 				}
 
-				if eg != nil && eg.verbose {
-					fmt.Fprintf(os.Stderr, "!!! row %d col %d %d\n", row, col, len(vd))
-				}
+//				if eg != nil && eg.verbose {
+//					fmt.Fprintf(os.Stderr, "!!! row %d col %d %d\n", row, col, len(blks))
+//				}
 
 				if ft == 0 {
-					switch len(ud) {
+					// if no luck, try the unverified
+					blks = eg.getUnverified(row, col)
+					switch len(blks) {
 					case 0:
-						ft = FileHole
+						// nothing
 					case 1:
 						ft = FileUnverified
 					default:
@@ -289,11 +288,20 @@ func (f *File) visit(offset uint64, count uint64, v func(addr uint64, size int, 
 					}
 				}
 
-//				if offset == 3660 {
-//					fmt.Fprintf(os.Stderr, "############## %d\n", ft)
-//				}
-				
-				if !v(offset, f.elsz - rem, ft, vd, ud) {
+				if ft == 0 {
+					// still no luck, try best guess
+					blks = eg.getBestGuess(row, col)
+					switch len(blks) {
+					case 0:
+						ft = FileHole
+					case 1:
+						ft = FileBestGuess
+					default:
+						ft = FileBestGuess | FileMulti
+					}
+				}
+
+				if !v(offset, f.elsz - rem, ft, blks) {
 					return
 				}
 
@@ -335,7 +343,7 @@ func (f *File) dumpECGroups() {
 */
 
 func (f *File) check(offset, count uint64) (rtype int, size uint64) {
-	f.visit(offset, count, func(addr uint64, sz int, dtype int, vblks []Blk, ublks []Blk) bool {
+	f.visit(offset, count, func(addr uint64, sz int, dtype int, blks []Blk) bool {
 		if sz == 0 {
 			return false
 		}
@@ -360,11 +368,15 @@ func (f *File) check(offset, count uint64) (rtype int, size uint64) {
 		}
 	})
 
+	if rtype == 0 {
+		rtype = FileHole
+	}
+
 	return
 }
 
 func (f *File) read(offset, count uint64) (rtype int, data []byte, cnt uint64) {
-	f.visit(offset, count, func(addr uint64, sz int, dtype int, vblks []Blk, ublks []Blk) bool {
+	f.visit(offset, count, func(addr uint64, sz int, dtype int, blks []Blk) bool {
 		if sz == 0 {
 			return false
 		}
@@ -372,10 +384,6 @@ func (f *File) read(offset, count uint64) (rtype int, data []byte, cnt uint64) {
 		if rtype == 0 {
 			rtype = dtype
 		}
-
-//		if offset <= 3660 && offset+count < 3660 {
-//			fmt.Fprintf(os.Stderr, "##############read %d %d\n", rtype, dtype)
-//		}
 
 		if dtype&FileMulti != 0 {
 			return false
@@ -387,13 +395,8 @@ func (f *File) read(offset, count uint64) (rtype int, data []byte, cnt uint64) {
 
 		cnt += uint64(sz)
 		start := f.elsz - sz
-//		fmt.Fprintf(os.Stderr, "addr %d sz %d start %d\n", addr, sz, start)
-		if rtype & FileVerified != 0 {
-			data = append(data, []byte(vblks[0])[start:]...)
-		} else if rtype & FileUnverified != 0 {
-			data = append(data, []byte(ublks[0])[start:]...)
-		} else {
-			// hole
+		if rtype != FileHole {
+			data = append(data, []byte(blks[0].b)[start:]...)
 		}
 
 		return true
@@ -408,15 +411,12 @@ func (f *File) read(offset, count uint64) (rtype int, data []byte, cnt uint64) {
 
 // Just return the data from one element
 func (f *File) readMulti(offset, count uint64) (rtype int, data [][]byte, cnt uint64) {
-	f.visit(offset, count, func(addr uint64, sz int, dtype int, vblks []Blk, ublks []Blk) bool {
+	f.visit(offset, count, func(addr uint64, sz int, dtype int, blks []Blk) bool {
 		if sz == 0 {
 			return false
 		}
 
 		rtype = dtype
-//		if offset <= 3660 && offset+count < 3660 {
-//			fmt.Fprintf(os.Stderr, "##############readMulti %d %d\n", rtype, dtype)
-//		}
 		cnt = uint64(sz)
 		start := f.elsz - sz
 		end := f.elsz
@@ -427,15 +427,10 @@ func (f *File) readMulti(offset, count uint64) (rtype int, data [][]byte, cnt ui
 			}
 		}
 
-		blks := vblks
-		if blks == nil || len(blks) == 0 {
-			blks = ublks
-		}
-
 		if blks != nil && len(blks) != 0 {
 			for _, b := range blks {
 				d := make([]byte, sz)
-				copy(d, b[start:end])
+				copy(d, b.b[start:end])
 				data = append(data, d)
 			}
 		}
@@ -467,7 +462,7 @@ func (f *File) readSuper(offset uint64) (size uint64, sha1 []byte) {
 		t, sz := f.check(o, superSize)
 //		fmt.Fprintf(os.Stderr, "readSuper: offset %d: type %x size %d\n", o, t, sz)
 		if sz == 0 || t == FileHole {
-			fmt.Fprintf(os.Stderr, "\tfailed\n")
+			fmt.Fprintf(os.Stderr, "\tfailed %d sz %d\n", t, sz)
 			return 0, nil
 		}
 
@@ -655,7 +650,7 @@ func (f *File) recoverData(cnum int, c *FileChunk, force bool) (complete bool) {
 		}
 
 		// we got it
-		c.dss = []DataExtent{ DataExtent{ origOff, data, true } }
+		c.dss = []DataExtent{ DataExtent{ origOff, data, FileVerified } }
 		fmt.Fprintf(os.Stderr, "\trecovered\n")
 		return true
 	}
@@ -668,39 +663,42 @@ nosha1:
 
 	// we are forced to return the data we have, no sha1 so there is no point
 	// to go over combinations
-	var verified bool
+	var vt int
 	var off uint64
 
 	ds = nil
 	data = nil
 	for o := uint64(0); o < chunklen; {
-		var v bool
 		var d []byte
 
 		t, sz := f.check(offset + o, chunklen - o)
+		if t == 0 {
+			panic("aaa")
+		}
+
 		if sz == 0 {
 			break
 		}
 
-		v = t & FileVerified != 0
 		if t & FileMulti != 0 {
 			_, ds, _ := f.readMulti(offset + o, chunklen - o)
 			d = ds[0]	// just pick the first?
 
 			// if there were multiple values, we can't be sure we are returning the correct one
-//			fmt.Fprintf(os.Stderr, "\t%d: false positive len %d count %d\n", offset + o, len(d), len(ds))
-			v = false
+			if t & FileVerified != 0 {
+				t = FileUnverified
+			}
 		} else {
 			_, d, _ = f.read(offset + o, chunklen - o)
 		}
 
 		// try to combine
-		if (off + uint64(len(data))) != o || verified != v {
+		if (off + uint64(len(data))) != o || vt != t {
 			if len(data) != 0 {
-				ds = append(ds, DataExtent{ origOff + off, data, verified })
+				ds = append(ds, DataExtent{ origOff + off, data, vt })
 			}
 
-			verified = v
+			vt = t
 			data = d
 			off = o
 		} else {
@@ -711,7 +709,7 @@ nosha1:
 	}
 
 	if data != nil {
-		ds = append(ds, DataExtent{ origOff + off, data, verified })	// append the last extent
+		ds = append(ds, DataExtent{ origOff + off, data, vt })	// append the last extent
 	}
 	c.dss = ds
 

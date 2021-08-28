@@ -38,7 +38,7 @@ type Codec struct {
 type DataExtent struct {
 	Offset		uint64
 	Data		[]byte
-	Verified	bool		// true if the data in the extent is verified
+	Type		int		// FileVerified, FileUnverified, or FileBestGuess
 }
 
 // for debugging
@@ -271,7 +271,8 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 				}
 
 				for i := 0; i < len(dblks); i++ {
-					dblks[i] = Blk(data[i])
+					dblks[i].b = data[i]
+					dblks[i].n = 1
 				}
 
 				f.add(addr - start, ef, dblks)
@@ -368,7 +369,8 @@ func (c *Codec) DecodeVerbose(start, end uint64, oligos []oligo.Oligo) (data []D
 				}
 
 				for i := 0; i < len(dblks); i++ {
-					dblks[i] = Blk(data[i])
+					dblks[i].b = data[i]
+					dblks[i].n = 1
 				}
 
 				f.add(addr, ef, dblks)

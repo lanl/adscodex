@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"adscodex/oligo/short"
-	"adscodex/criteria"
+_	"adscodex/criteria"
 )
 
 var tblPath = "../tbl"
@@ -17,82 +18,110 @@ func SetLookupTablePath(path string) {
 	tblPath = path
 }
 
-func (tbl *Table) Write(w io.Writer) (err error) {
+func (tbl *EncTable) Write(w io.Writer, maxval int) (err error) {
 	var buf []byte
 
-	if tbl == nil {
-		buf = Pint32(0, buf)
-		buf = Pint32(0, buf)
-		buf = Pint64(0, buf)
-		buf = Pint64(0, buf)
-		buf = Pint32(0, buf)
-	} else {
-		buf = Pint32(uint32(tbl.bits), buf)
-		buf = Pint32(uint32(tbl.prefix.Len()), buf)
-		buf = Pint64(tbl.prefix.Uint64(), buf)
-		buf = Pint64(tbl.maxval, buf)
-		buf = Pint32(uint32(len(tbl.tbl)), buf)
-
-		for _, n := range tbl.tbl {
-			buf = Pint64(n, buf)
-		}
+	for i := 0; i < maxval; i++ {
+		ol := &tbl.oligos[i]
+		buf = Pint32(uint32(ol.Uint64()), buf)
 	}
 
+//	fmt.Printf("write etbl %d\n", len(buf))
 	_, err = w.Write(buf)
 	return
 }
 
-func (tbl *Table) Read(r io.Reader) (err error) {
+func (tbl *EncTable) Read(r io.Reader, olen, maxval int) (err error) {
 	var n int
 	var v uint32
-	var v64 uint64
-	var p []byte
 
-	buf := make([]byte, 28)
+	buf := make([]byte, maxval * 4)
+	ols := make([]short.Oligo, maxval)
+	tbl.oligos = ols
 
+//	fmt.Printf("read etbl %d\n", len(buf))
 	n, err = r.Read(buf)
 	if err != nil {
 		return
-	} else if n != 28 {
+	} else if n != len(buf) {
 		return errors.New("short read")
 	}
 
-	v, p = Gint32(buf)
-	tbl.bits = int(v)
-	v, p = Gint32(p)
-	v64, p = Gint64(p)
-	tbl.prefix = short.Val(int(v), v64)
-
-	tbl.maxval, p = Gint64(p)
-	v, p = Gint32(p)
-	tlen := int(v)
-
-	if tlen == 0 {
-		return
+	p := buf
+	for i := 0; i < len(ols); i++ {
+		v, p = Gint32(p)
+		ols[i].SetVal(olen, uint64(v))
 	}
 
-	tbl.tbl = make([]uint64, tlen)
-	buf = make([]byte, tlen * 8)
-	n, err = r.Read(buf)
-	if err != nil {
-		return
-	} else if n != tlen*8 {
-		return errors.New("short read")
-	}
-
-	p = buf
-	for i := 0; i < tlen; i++ {
-		v64, p = Gint64(p)
-		tbl.tbl[i] = v64
+	if len(p) != 0 {
+		panic("internal error")
 	}
 
 	return
 }
 
-func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err error) {
+func (tbl *DecTable) Write(w io.Writer, olen, vrntnum int) (err error) {
+	var buf []byte
+
+	for i := 0; i < 1 << (2 * olen); i++ {
+		for j := 0; j < vrntnum; j++ {
+			v := &tbl.entries[i][j]
+			buf = Pint16(v.val, buf)
+			buf = Pint8(byte(v.ol.Len()), buf)
+			buf = Pint32(uint32(v.ol.Uint64()), buf)
+			buf = Pint32(math.Float32bits(v.prob), buf)
+		}
+	}
+
+//	fmt.Printf("write dtbl %d (%d)\n", len(buf), olen)
+	_, err = w.Write(buf)
+	return
+}
+
+func (tbl *DecTable) Read(r io.Reader, olen, vnum int) (err error) {
+	var n int
+	var v8 byte
+	var v16 uint16
+	var v32 uint32
+
+	onum := 1 << (2*olen)
+	buf := make([]byte, onum*vnum*(2+1+2+4))
+	ents := make([][VariantNum]DecVariant, onum)
+	tbl.entries = ents
+
+//	fmt.Printf("read dtbl %d\n", len(buf))
+	n, err = r.Read(buf)
+	if err != nil {
+		return
+	} else if n != len(buf) {
+		return fmt.Errorf("short read %d expected %d", n, len(buf))
+	}
+
+	p := buf
+	for i := 0; i < onum; i++ {
+		for j := 0; j < vnum; j++ {
+			v := &ents[i][j]
+
+			v16, p = Gint16(p)
+			v.val = v16
+			v8, p = Gint8(p)
+			v32, p = Gint32(p)
+			v.ol.SetVal(int(v8), uint64(v16))
+			v32, p = Gint32(p)
+			v.prob = math.Float32frombits(v32)
+		}
+	}
+
+	if len(p) > 0 {
+		panic("internal error")
+	}
+
+	return
+}
+
+func readLookupTable(fname string) (lt *LookupTable, err error) {
 	var f *os.File
 	var v uint32
-	var id uint64
 	var n int
 
 	f, err = os.Open(fname)
@@ -101,7 +130,7 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 	}
 	defer f.Close()
 
-	buf := make([]byte, 16)
+	buf := make([]byte, 4+4+4+4)
 	n, err = f.Read(buf)
 	if err != nil {
 		return
@@ -109,35 +138,51 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 		return nil, errors.New("short read")
 	}
 
-	id, buf = Gint64(buf)
-	if (id>>48) != ('L'<<8 | '0') {
-		return nil, fmt.Errorf("not ADS Codex lookup table: got %x expected %x", id>>48, 'L'<<8 | '0')
-	}
-
-	id &= 0xFFFFFFFFFFFF	// 48 bits
-	if id != crit.Id() {
-		return nil, fmt.Errorf("criteria mistmatch: got %x expected %x", id, crit.Id())
-	}
-	
+	// header
 	lt = new(LookupTable)
 	v, buf = Gint32(buf)
-	lt.oligolen = int(v)
+	lt.oligoLen = int(v)
 	v, buf = Gint32(buf)
-	lt.pfxlen = int(v)
+	lt.maxVal = int(v)
+	v, buf = Gint32(buf)
+	lt.pfxLen = int(v)
+	v, buf = Gint32(buf)
+	lt.vrntNum = int(v)
 
-	lt.pfxtbl = make([]*Table, (1<<(2*lt.pfxlen)))
-	for i := 0; i < len(lt.pfxtbl); i++ {
-		tbl := new(Table)
-		err = tbl.Read(f)
+	if lt.vrntNum > VariantNum {
+		lt.vrntNum = VariantNum
+	}
+
+//	fmt.Printf("olen %d maxval %d pfxlen %d variantnum %d\n", lt.oligoLen, lt.maxVal, lt.pfxLen, lt.vrntNum)
+	lt.etbls = make([]*EncTable, (1<<(2*lt.pfxLen)))
+	lt.dtbls = make([]*DecTable, (1<<(2*lt.pfxLen)))
+
+	// encoding tables
+	for i := 0; i < len(lt.etbls); i++ {
+//		fmt.Printf("etable %d\n", i)
+		tbl := new(EncTable)
+		err = tbl.Read(f, lt.oligoLen, lt.maxVal)
 		if err != nil {
 			return
 		}
 
-		if tbl.tbl == nil {
+		if tbl.oligos == nil {
 			tbl = nil
 		}
 
-		lt.pfxtbl[i] = tbl
+		lt.etbls[i] = tbl
+	}
+
+	// decoding tables
+	for i := 0; i < len(lt.dtbls); i++ {
+//		fmt.Printf("dtable %d\n", i)
+		tbl := new(DecTable)
+		err = tbl.Read(f, lt.oligoLen, lt.vrntNum)
+		if err != nil {
+			return
+		}
+
+		lt.dtbls[i] = tbl
 	}
 
 	return
@@ -152,23 +197,42 @@ func (lt *LookupTable) Write(fname string) (err error) {
 	}
 	defer f.Close()
 
-	id := ('L'<<56 | '0'<<48) | lt.crit.Id()
-	buf := Pint64(id, nil)
-	buf = Pint32(uint32(lt.oligolen), buf)
-	buf = Pint32(uint32(lt.pfxlen), buf)
+	// header
+	buf := Pint32(uint32(lt.oligoLen), nil)
+	buf = Pint32(uint32(lt.maxVal), buf)
+	buf = Pint32(uint32(lt.pfxLen), buf)
+	buf = Pint32(uint32(lt.vrntNum), buf)
 	_, err = f.Write(buf)
 	if err != nil {
 		return
 	}
 
-	for _, tbl := range lt.pfxtbl {
-		err = tbl.Write(f)
+	// encoding tables
+//	fmt.Printf("encode table %d decode table %d\n", len(lt.etbls), len(lt.dtbls))
+	for _, tbl := range lt.etbls {
+		err = tbl.Write(f, lt.maxVal)
+		if err != nil {
+			return
+		}
+	}
+
+	// decoding tables
+	for _, tbl := range lt.dtbls {
+		err = tbl.Write(f, lt.oligoLen, lt.vrntNum)
 		if err != nil {
 			return
 		}
 	}
 
 	return
+}
+
+func Gint8(buf []byte) (byte, []byte) {
+	return buf[0], buf[1:]
+}
+
+func Gint16(buf []byte) (uint16, []byte) {
+	return uint16(buf[0]) | (uint16(buf[1]) << 8), buf[2:]
 }
 
 func Gint32(buf []byte) (uint32, []byte) {
@@ -182,6 +246,17 @@ func Gint64(buf []byte) (uint64, []byte) {
 			(uint64(buf[3]) << 24) | (uint64(buf[4]) << 32) | (uint64(buf[5]) << 40) |
 			(uint64(buf[6]) << 48) | (uint64(buf[7]) << 56),
 		buf[8:]
+}
+
+func Pint8(val byte, buf []byte) []byte {
+	buf = append(buf, val)
+	return buf
+}
+
+func Pint16(val uint16, buf []byte) []byte {
+	buf = append(buf, uint8(val))
+	buf = append(buf, uint8(val >> 8))
+	return buf
 }
 
 func Pint32(val uint32, buf []byte) []byte {

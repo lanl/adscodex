@@ -7,7 +7,7 @@ import (
 	"sync"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
-	"adscodex/utils/errmdl"
+	"adscodex/errmdl"
 )
 
 type SimpleErrorModel struct {

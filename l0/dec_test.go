@@ -1,49 +1,39 @@
 package l0
 
 import (
+	"fmt"
 	"testing"
-	"adscodex/oligo/short"
-	"adscodex/criteria"
+_	"adscodex/oligo/short"
+_	"adscodex/criteria"
 )
 
-func testDecode(t *testing.T, olen int, crit criteria.Criteria) {
+func testDecode(t *testing.T, c *Codec) {
+	pfxLen := c.PrefixLen()
+	oligoLen := c.OligoLen()
+//	maxVal := c.MaxVal()
 	for i := 0; i < *iternum; {
-		prefix := randomOligo(4)
-		if !crit.Check(prefix) {
-			continue
-		}
+		prefix := randomOligo(pfxLen)
+//		if !crit.Check(prefix) {
+//			continue
+//		}
 
-		o := randomOligo(olen)
-		val, err := Decode(prefix, o, crit)
+		o := randomOligo(oligoLen)
+		va, err := c.Decode(prefix, o)
 		if err != nil {
 			t.Fatalf("decoding failed: %v", err)
 		}
 
-		if dtbl {
-			val2, err := decodeSlow(prefix, o, short.New(o.Len()), 0, crit)
-			if err != nil {
-				t.Fatalf("decoding slow failed: %v", err)
-			}
-
-			if val != val2 {
-				t.Fatalf("slow and fast decode not the same: %v: %v %v", o, val, val2)
-			}
+		if len(va) == 0 {
+			fmt.Printf("%v null\n", o)
 		}
 
-		o2, err := Encode(prefix, val, o.Len(), crit)
-		if err != nil {
-			t.Fatalf("encoding failed: %v", err)
-		}
-
-		if o.Cmp(o2) != 0 {
-			t.Fatalf("encoded value doesn't match: %v %v\n", o, o2)
-		}
-
+//		fmt.Printf("*** %v %d\n", o, va[0].val)
 		i++
 	}
 }
 
 
 func TestDecode(t *testing.T) {
-	testDecode(t, 4, criteria.H4G2)
+	fmt.Printf("Test decode\n")
+	testDecode(t, codec)
 }

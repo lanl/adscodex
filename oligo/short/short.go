@@ -189,3 +189,8 @@ func (o *Oligo) Append(other oligo.Oligo) bool {
 func (o *Oligo) Uint64() uint64 {
 	return o.seq
 }
+
+func (o *Oligo) SetVal(olen int, val uint64) {
+	o.len = olen
+	o.seq = val
+}

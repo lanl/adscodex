@@ -2,176 +2,74 @@ package l0
 
 import (
 	"fmt"
-	"math"
+_	"math"
 	"adscodex/criteria"
 	"adscodex/oligo"
 	"adscodex/oligo/short"
+	"adscodex/errmdl"
+)
+
+const (
+	VariantNum = 4
 )
 
 // Lookup tables for all prefixes
 type LookupTable struct {
-	oligolen	int		// oligo length
-	pfxlen		int		// prefix length
-	crit		criteria.Criteria
-	pfxtbl		[]*Table	// tables for each of the prefixes
-	maxval		int64		// maximum value that can be stored with the criteria at the oligoLen
+	oligoLen	int		// oligo length
+	maxVal	int		// maximum value to be used
+	pfxLen	int		// prefix length
+	vrntNum	int		// number of variants in the decoding tables
+	crit	criteria.Criteria
+	emdl	errmdl.ErrMdl
+	minerr	float64
+	etbls	[]*EncTable
+	dtbls	[]*DecTable
 }
 
-// Lookup table for a single prefix
-//
-// For encoding tables, the table helps converting the numerical value that
-// needs to be encoded to a (short) oligo. The way it works is removing the
-// last "bits" bits from tne value and using it as an index in the "tbl"
-// array. The value from the array is used as a short oligo and the slow
-// counting continues until the original value is reached.
-//
-// For decoding tables, the table helps converting an oligo to the original
-// numerical value that was encoded. The way it works is removing the last
-// "bits"/2 nts from the (short) sequence and using it as an index in the "tbl"
-// array. The value from the array is used as a starting point for the slow
-// counting that calculates the original value.
-
-type Table struct {
-	bits	int			// how many bits to skip
-	prefix	*short.Oligo		// prefix
-	tbl	[]uint64		// 
-	maxval	uint64			// maximum value
+type EncTable struct {
+	oligos	[]short.Oligo	// Oligos per each value. The array has maxVal length.
 }
 
-func newTable(prefix *short.Oligo, bits int) *Table {
-	tbl := new(Table)
-	tbl.prefix = prefix
-	tbl.bits = bits
+type DecVariant struct {
+	val	uint16		// value
+	ol	short.Oligo	// oligo
+	prob	float32		// not sure we need it
+}
+	
+type DecTable struct {
+	entries	[][VariantNum]DecVariant	// The array length is 2*oligoLen
+}
 
+func newLookupTable(oligoLen, maxVal, pfxLen int, minerr float64, crit criteria.Criteria, emdl errmdl.ErrMdl) *LookupTable {
+	tbl := new(LookupTable)
+	tbl.oligoLen = oligoLen
+	tbl.maxVal = maxVal
+	tbl.pfxLen = pfxLen
+	tbl.minerr = minerr
+	tbl.vrntNum = VariantNum
+	tbl.crit = crit
+	tbl.emdl = emdl
+	tbl.etbls = make([]*EncTable, 1<<(2*pfxLen))
+	tbl.dtbls = make([]*DecTable, 1<<(2*pfxLen))
+
+	fmt.Printf("lookup tables: %d olen %d maxval %d\n", 1<<(2*pfxLen), tbl.oligoLen, tbl.maxVal)
 	return tbl
 }
 
-func getEncodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
-	if encodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := encodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[oligoLen]
+// encodes a value val to be appended after a prefix
+func (lt *LookupTable) getEncode(prefix *short.Oligo, val uint16) oligo.Oligo {
+	return &lt.etbls[prefix.Uint64()].oligos[val]
+}
+
+// find the most likely decodes from a oligo
+func (lt *LookupTable) getDecodes(prefix, ol *short.Oligo) []DecVariant {
+	dv := lt.dtbls[prefix.Uint64()].entries[ol.Uint64()]
+	for n := 0; n < len(dv); n++ {
+		if dv[n].ol.Len() == 0 {
+			return dv[0:n]
 		}
 	}
 
-	return
+	return dv[:]
 }
 
-func getDecodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
-	if decodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := decodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[oligoLen]
-		}
-	}
-
-	return
-}
-
-// Looks up a value in the encoding table
-// Returns the starting oligo for the "slow" counting as well as 
-// how many more values need to be counted.
-func (lt *LookupTable) encodeLookup(prefix oligo.Oligo, val uint64) (o oligo.Oligo, rest uint64) {
-	sp, ok := short.Copy(prefix)
-	if !ok {
-		return short.New(lt.oligolen), val
-	}
-
-	tbl := lt.pfxtbl[sp.Uint64()]
-	idx := val >> tbl.bits
-	if idx > uint64(len(tbl.tbl)) {
-		idx = uint64(len(tbl.tbl) - 1)
-	}
-
-	o, _ = short.Val(lt.oligolen, tbl.tbl[idx]), val - (idx<<tbl.bits)
-	rest = val - (idx << tbl.bits)
-	return
-}
-
-// Looks up an oligo in the decoding table
-// Returns the starting oligo for the "slow" counting as well
-// as the value associated with that oligo
-func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (o oligo.Oligo, val uint64) {
-	sp, ok := short.Copy(prefix)
-	if !ok {
-		return short.New(lt.oligolen), val
-	}
-
-	tbl := lt.pfxtbl[sp.Uint64()]
-
-	so, ok := short.Copy(oo)
-	if !ok {
-		return short.New(lt.oligolen), val
-	}
-
-	if tbl == nil {
-		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
-		panic("tbl is null")
-	}
-
-	if so == nil {
-		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
-		panic("so is null")
-	}
-
-	idx := so.Uint64() >> tbl.bits
-	if idx > uint64(len(tbl.tbl)) {
-		idx = uint64(len(tbl.tbl) - 1)
-	}
-
-	o = short.Val(lt.oligolen, idx<<tbl.bits)
-	val = tbl.tbl[idx]
-	return
-}
-
-func (lt *LookupTable) MaxVal() uint64 {
-	var m uint64
-
-	m = math.MaxInt64
-	for _, t := range lt.pfxtbl {
-		if t.maxval != 0 && m > t.maxval {
-			m = t.maxval
-		}
-	}
-
-	return m
-}
-
-func (lt *LookupTable) MaxVals() string {
-	s := ""
-	for _, t := range lt.pfxtbl {
-		s += fmt.Sprintf("%v %d\n", t.prefix, t.maxval)
-	}
-
-	return s
-}
-
-// Convert the table to a string (for debugging)
-func (tbl *Table) String(oligolen int) string {
-	s := fmt.Sprintf("Table %p bits %d prefix %v maxval %d\n", tbl, tbl.bits, tbl.prefix, tbl.maxval)
-	for i, v := range tbl.tbl {
-		s += fmt.Sprintf("\t%d: %v\n", i, short.Val(oligolen, v))
-	}
-
-	return s
-}
-
-// Convert the lookup table to a string (for debugging)
-func (lt *LookupTable) String() string {
-	s := fmt.Sprintf("LookupTable %p oligolen %d pfxlen %d pfxtbl %d\n", lt, lt.oligolen, lt.pfxlen, len(lt.pfxtbl))
-	for p := 0; p < len(lt.pfxtbl); p++ {
-		s += fmt.Sprintf("%v ", short.Val(4, uint64(p)))
-		tbl := lt.pfxtbl[p]
-		if tbl == nil {
-			s += "\n"
-			continue
-		}
-		s += tbl.String(lt.oligolen)
-	}
-
-	return s
-}

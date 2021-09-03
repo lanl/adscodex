@@ -8,7 +8,7 @@ _	"errors"
 	"time"
 	"adscodex/io/csv"
 	"adscodex/utils"
-	"adscodex/utils/errmdl/simple"
+	"adscodex/errmdl/simple"
 )
 
 var num = flag.Int("n", 0, "number of sequences to generate")

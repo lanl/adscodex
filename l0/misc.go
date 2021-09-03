@@ -1,5 +1,6 @@
 package l0
 
+/*
 import (
 	"adscodex/criteria"
 )
@@ -42,3 +43,4 @@ func Bits2OligoLen(bitnum int, c criteria.Criteria) int {
 
 	return oligoLen
 }
+*/

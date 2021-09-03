@@ -5,7 +5,7 @@ _	"fmt"
 	"sort"
 	"adscodex/oligo"
 	"adscodex/oligo/short"
-	"adscodex/utils/errmdl"
+	"adscodex/errmdl"
 )
 
 type ModerateErrorModel struct {

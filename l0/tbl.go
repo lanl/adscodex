@@ -73,3 +73,23 @@ func (lt *LookupTable) getDecodes(prefix, ol *short.Oligo) []DecVariant {
 	return dv[:]
 }
 
+func (t *EncTable) String() (ret string) {
+	for i := 0; i < len(t.oligos); i++ {
+		ret += fmt.Sprintf("\t%d\t%v\n", i, &t.oligos[i])
+	}
+
+	return
+}
+
+func (t *DecTable) String(olen int) (ret string) {
+	for i := 0; i < len(t.entries); i++ {
+		ol := short.Val(olen, uint64(i))
+		ret += fmt.Sprintf("\t%v\n", ol)
+		for j := 0; j < len(t.entries[i]); j++ {
+			v := &t.entries[i][j]
+			ret += fmt.Sprintf("\t\t%d\t%v\t%v\n", v.val, &v.ol, v.prob)
+		}
+	}
+
+	return
+}

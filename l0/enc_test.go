@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
-_	"adscodex/oligo/short"
+	"adscodex/oligo/short"
 _	"adscodex/criteria"
 )
 
@@ -31,6 +31,16 @@ func testEncode(t *testing.T, c *Codec) {
 		}
 
 		if val != uint64(va[0].val) {
+			pfx, _ := short.Copy(prefix)
+			o, _ := short.Copy(o1)
+			fmt.Printf("decode doesn't match: prefix %v (%d): %v (%d): %d %d\n", pfx, pfx.Uint64(), o, o.Uint64(), val, va[0].val)
+			for i := 0; i < len(va); i++ {
+				v := &va[i]
+				fmt.Printf("\t%d %v %v\n", v.val, &v.ol, v.prob)
+			}
+
+			fmt.Printf("Encode table for %v\n%v\n", pfx, c.EncodeTable(pfx.Uint64()))
+			fmt.Printf("Decode table for %v\n%v\n", pfx, c.DecodeTable(pfx.Uint64()).String(c.OligoLen()))
 			t.Fatalf("decode doesn't match: %d %d\n", val, va[0].val)
 		}
 

@@ -81,3 +81,12 @@ func (c *Codec) MaxVal() int {
 func (c *Codec) PrefixLen() int {
 	return c.lt.pfxLen
 }
+
+func (c *Codec) EncodeTable(pfx uint64) *EncTable {
+	return c.lt.etbls[pfx]
+}
+
+func (c *Codec) DecodeTable(pfx uint64) *DecTable {
+	return c.lt.dtbls[pfx]
+}
+

@@ -47,7 +47,7 @@ func BuildLookupTable(oligoLen, maxVal, pfxLen int, minerr float64, crit criteri
 	lt := newLookupTable(oligoLen, maxVal, pfxLen, minerr, crit, emdl)
 
 	npfx := 1<<(2*pfxLen)
-	ncpu := 4 // runtime.NumCPU()
+	ncpu := 1 // runtime.NumCPU()
 	sperproc := 1 + npfx/ncpu
 	pn := 0
 	ch := make(chan bool)
@@ -114,9 +114,6 @@ func (lt *LookupTable) generateTable(npfx uint64) {
 		tbl.heap = tbl.heap[1:]
 
 		nols[nol] = true
-		if len(nols) == count {
-			break
-		}
 
 		errs := etbl.errs[nol].errs
 		for i := 0; i < len(errs); i++ {
@@ -128,6 +125,10 @@ func (lt *LookupTable) generateTable(npfx uint64) {
 					en.prob += prob
 				}
 			})
+		}
+
+		if len(nols) == count {
+			break
 		}
 	}
 
@@ -173,7 +174,7 @@ func (lt *LookupTable) generateTable(npfx uint64) {
 		})
 
 		// invalid entry -> olen = 0
-		for i := 9; i < VariantNum; i++ {
+		for i := 0; i < VariantNum; i++ {
 			dent[i].ol.SetVal(0, 0)
 		}
 

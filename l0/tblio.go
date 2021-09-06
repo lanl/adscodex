@@ -85,7 +85,7 @@ func (tbl *DecTable) Read(r io.Reader, olen, vnum int) (err error) {
 	var v32 uint32
 
 	onum := 1 << (2*olen)
-	buf := make([]byte, onum*vnum*(2+1+2+4))
+	buf := make([]byte, onum*vnum*(2+1+4+4))
 	ents := make([][VariantNum]DecVariant, onum)
 	tbl.entries = ents
 

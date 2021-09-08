@@ -11,7 +11,7 @@ import (
 	"os"
 	"sync"
 	"adscodex/oligo"
-	"adscodex/criteria"
+_	"adscodex/criteria"
 	"adscodex/l0"
 	"adscodex/l1"
 	"github.com/klauspost/reedsolomon"
@@ -61,21 +61,22 @@ var crctbl = crc64.MakeTable(crc64.ECMA)
 //	p5	5'-end primer
 //	p3	3'-end primer
 //	dblknum	number of data blocks in an oligo
-//	mdsz	size of a metadata block in an oligo
+//	mdnum	size of a metadata block in an oligo
 //	mdcsum	number of metadata blocks for checksum
 //	dseqnum	number of data oligos in the erasure block
 //	rseqnum	number of erasure oligos in the erasure block
+//	l0codec	Level0 codec
 //
 // Additional SetMetadataChecksum and SetDataChecksum functions
 // can be called to change the behavior of the L1 codec
-func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdcsum, dseqnum, rseqnum int) (c *Codec, err error) {
+func NewCodec(p5, p3 oligo.Oligo, dblknum, mdnum, mdcsum, dseqnum, rseqnum int, l0codec *l0.Codec) (c *Codec, err error) {
 	c = new(Codec)
 	c.p5 = p5
 	c.p3 = p3
 	c.dblknum = dblknum
 	c.dseqnum = dseqnum
 	c.rseqnum = rseqnum
-	c.c1, err = l1.NewCodec(dblknum, mdsz, mdcsum, criteria.H4G2)
+	c.c1, err = l1.NewCodec(dblknum, mdnum, mdcsum, l0codec)
 	if err != nil {
 		c = nil
 		return
@@ -95,11 +96,6 @@ func (c *Codec) SetMetadataChecksum(cs int) error {
 	return c.c1.SetMetadataChecksum(cs)
 }
 
-// See the description of the appropriate function in the L1 code
-func (c *Codec) SetDataChecksum(cs int) error {
-	return c.c1.SetDataChecksum(cs)
-}
-
 func (c *Codec) SetCompat(cpt bool) {
 	c.compat = cpt
 }
@@ -111,11 +107,6 @@ func (c *Codec) SetRandomize(rndmz bool) {
 func (c *Codec) SetVerbose(v bool) {
 	c.verbose = v
 }
-
-func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
-	c.c1.SetSimpleErrorModel(ierr, derr, serr, maxerrs)
-}
-
 
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()
@@ -130,7 +121,7 @@ func (c *Codec) MaxAddr() uint64 {
 // the end.
 func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []oligo.Oligo, err error) {
 	blknum := c.c1.BlockNum()
-	blksz := c.c1.BlockSize()
+	blksz := 1
 
 	if len(data) == 0 {
 		err = fmt.Errorf("can't encode empty array")

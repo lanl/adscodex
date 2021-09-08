@@ -80,10 +80,13 @@ func TestEncode(t *testing.T) {
 	maxaddr := cdc.MaxAddr()
 	fmt.Printf("maxaddr: %d\n", maxaddr)
 
-	blks := make([]byte, cdc.DataNum())
+	blks := make([][]byte, cdc.BlockNum())
 	for n := 0; n < 200; n++ {
 		for j := 0; j < len(blks); j++ {
-			blks[j] = byte(rand.Intn(256))
+			blks[j] = make([]byte, cdc.BlockSize())
+			for i := 0; i < len(blks[j]); i++ {
+				blks[j][i] = byte(rand.Intn(256))
+			}
 		}
 
 		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))
@@ -112,8 +115,10 @@ func TestEncode(t *testing.T) {
 		}
 
 		for i := 0; i < len(blks); i++ {
-			if blks[i] != dblks[i] {
-				t.Fatalf("data doesn't match: %v %v\n", blks, dblks)
+			for j, b := range blks[i] {
+				if b != dblks[i][j] {
+					t.Fatalf("data doesn't match: %v %v\n", blks, dblks)
+				}
 			}
 		}
 
@@ -129,12 +134,15 @@ func TestRecover(t *testing.T) {
 	nerr := *errnum
 	niter := *iternum
 
-	blks := make([]byte, cdc.DataNum())
+	blks := make([][]byte, cdc.BlockNum())
 	errnum := 0
 	errpositive := 0
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
-			blks[i] = byte(rand.Intn(256))
+			blks[i] = make([]byte, cdc.BlockSize())
+			for j := 0; j < len(blks[i]); j++ {
+				blks[i][j] = byte(rand.Intn(256))
+			}
 		}
 
 		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))

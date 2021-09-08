@@ -127,12 +127,18 @@ func initTest() error {
 func runtest(rseed int64, niter int, ch chan Stat) {
 	var st Stat
 
-	blks := make([]byte, cdc.DataNum())
+	blks := make([][]byte, cdc.BlockNum())
+	for i := 0; i < len(blks); i++ {
+		blks[i] = make([]byte, cdc.BlockSize())
+	}
+
 	rnd := rand.New(rand.NewSource(rndseed))
 	t := time.Now()
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
-			blks[i] = byte(rnd.Intn(256))
+			for j := 0; j < len(blks[i]); j++ {
+				blks[i][j] = byte(rnd.Intn(256))
+			}
 		}
 
 		addr := uint64(rnd.Intn(int(cdc.MaxAddr() - 2)))
@@ -157,11 +163,17 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		}
 
 		for i := 0; i < len(blks); i++ {
-			d := data[i]
-			b := blks[i]
-			if d != b {
-				st.dtfp++
-				break
+			if len(blks[i]) != len(data[i]) {
+				fmt.Printf("data blocks length mismatch: %v %v\n", blks[i], data[i])
+			}
+
+			for j := 0; j < len(blks[i]); j++ {
+				d := data[i][j]
+				b := blks[i][j]
+				if d != b {
+					st.dtfp++
+					break
+				}
 			}
 		}
 	}

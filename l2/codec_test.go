@@ -10,13 +10,14 @@ import (
 	"adscodex/oligo"
 	"adscodex/oligo/long"
 	"adscodex/l1"
-	"adscodex/utils/errmdl/simple"
+	"adscodex/l0"
+	"adscodex/errmdl/simple"
 )
 
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos in an erasure group")
 var eseqnum = flag.Int("rseqnum", 2, "number of erasure oligos in an erasure group")
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var dbnum = flag.Int("dbnum", 7, "number of data blocks")
+var mdnum = flag.Int("mdnum", 4, "metadata block size")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
 var dtctype = flag.String("dtctype", "parity", "data error detection type (parity or even)")
@@ -25,7 +26,7 @@ var derrate = flag.Float64("derr", 1.084, "error rate (percent)")
 var serrate = flag.Float64("serr", 0.752, "error rate (percent)")
 var prob = flag.Float64("prob", 0.8,  "probability for negative binomial distribution")
 var dfclty =  flag.Int("dfclty", 1, "decoding difficulty level")
-var crit = flag.String("crit", "h4g2", "criteria")
+var c0file = flag.String("ctbl", "../tbl/165o6b8.tbl", "L0 codec table")
 var seed = flag.Int64("s", 1, "random generator seed")
 var depth = flag.Int("depth", 30, "depth")
 
@@ -57,15 +58,18 @@ var errmdl *simple.SimpleErrorModel
 var rnd *rand.Rand
 
 func initTest(t *testing.T) {
-	var err error
-
 	if cdc != nil {
 		return
 	}
 
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCA")
 	p3, _ = long.FromString("ATCAGTGAGCTGGCAACTTCCA")
-	cdc, err = NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *eseqnum)
+	c0, err := l0.Load(*c0file)
+	if err != nil {
+		t.Fatalf("%v\n", err)
+	}
+
+	cdc, err = NewCodec(p5, p3, *dbnum, *mdnum, *mdcnum, *dseqnum, *eseqnum, c0)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
@@ -79,17 +83,6 @@ func initTest(t *testing.T) {
 
 	case "rs":
 		err = cdc.SetMetadataChecksum(l1.CSumRS)
-	}
-
-	switch *dtctype {
-	default:
-		err = fmt.Errorf("Error: invalid data EC type")
-
-	case "parity":
-		err = cdc.SetDataChecksum(l1.CSumParity)
-
-	case "even":
-		err = cdc.SetDataChecksum(l1.CSumEven)
 	}
 
 	if err != nil {
@@ -140,7 +133,7 @@ func TestEncode(t *testing.T) {
 		fmt.Printf("\nDecoding orig %d with errors %d oligos %d unique...\n", len(oligos), len(nols), len(omap))
 		de := cdc.Decode(0, nextaddr, nols)
 		for i := 0; i < len(de); i++ {
-			fmt.Printf("\textent %d offset %d size %d verified %v\n", i, de[i].Offset, len(de[i].Data), de[i].Verified)
+			fmt.Printf("\textent %d offset %d size %d verified %v\n", i, de[i].Offset, len(de[i].Data), de[i].Type)
 		}
 /*
 		if len(de) == 0 {

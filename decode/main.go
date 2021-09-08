@@ -8,6 +8,7 @@ import (
 	"runtime/pprof"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
+	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/l2"
 	"adscodex/io/csv"
@@ -16,19 +17,19 @@ import (
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var dbnum = flag.Int("dbnum", 7, "number of data blocks")
+var mdnum = flag.Int("mdnum", 4, "metadata block size")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var profname = flag.String("prof", "", "profile filename")
 var ftype = flag.String("ftype", "csv", "input file type")
 var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
-var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var verbose = flag.Bool("v", false, "verbose")
 var start = flag.Uint64("addr", 0, "start address")
+var l0cfile = flag.String("l0", "../tbl/165o6b8.tbl", "Level 0 codec table")
 
 func main() {
 	flag.Parse()
@@ -45,7 +46,14 @@ func main() {
 		return
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
+	c0, err := l0.Load(*l0cfile)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	var cdc *l2.Codec
+	cdc, err = l2.NewCodec(p5, p3, *dbnum, *mdnum, *mdcnum, *dseqnum, *rseqnum, c0)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
@@ -57,7 +65,7 @@ func main() {
 		return
 	}
 
-	var mc, dc int
+	var mc int
 	switch  *mdcsum {
 	default:
 		fmt.Printf("Invalid metadata checksum type\n")
@@ -75,22 +83,6 @@ func main() {
 		return
 	}
 
-	switch  *dtcsum {
-	default:
-		fmt.Printf("Invalid data checksum type: %s\n", *dtcsum)
-		return
-
-	case "parity":
-		dc = l1.CSumParity
-
-	case "even":
-		dc = l1.CSumEven
-	}
-
-	if err := cdc.SetDataChecksum(dc); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
 	cdc.SetRandomize(*rndomize)
 	cdc.SetVerbose(*verbose)
 

@@ -109,7 +109,7 @@ func (c *Codec) updateChecksums() (err error) {
 }
 
 // number of blocks per oligo
-func (c *Codec) DataNum() int {
+func (c *Codec) BlockNum() int {
 	return c.datanum
 }
 
@@ -139,8 +139,8 @@ func (c *Codec) MaxAddr() uint64 {
 // moment p5 needs to be at least 4 nts long.
 // The ef parameter specifies whether the oligo is an erasure oligo (i.e. provides some erasure data 
 // instead of data data).
-func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, data []byte) (o oligo.Oligo, err error) {
-	o, err = c.encode(p5, p3, address, ef, false, data)
+func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, dblks [][]byte) (o oligo.Oligo, err error) {
+	o, err = c.encode(p5, p3, address, ef, false, dblks)
 	if err != nil {
 		return
 	}
@@ -148,7 +148,7 @@ func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, data []byte)
 	if gc := oligo.GCcontent(o); gc > 0.6 {
 		var o1 oligo.Oligo
 
-		o1, err = c.encode(p5, p3, address, ef, true, data)
+		o1, err = c.encode(p5, p3, address, ef, true, dblks)
 		if err != nil {
 			return
 		}
@@ -164,10 +164,10 @@ func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, data []byte)
 // The actual implementation of the encoding. 
 // The sf paramter defines if the payload needs to be negated so 
 // the GC content is kept low.
-func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data []byte) (o oligo.Oligo, err error) {
+func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, dblks [][]byte) (o oligo.Oligo, err error) {
 	var mdb []uint64
 
-	if len(data) != c.DataLen() {
+	if len(dblks) != c.BlockNum() {
 		return nil, errors.New("invalid data length")
 	}
 
@@ -183,11 +183,14 @@ func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data []b
 
 	// negate the values if sf is true
 	if sf {
-		d := make([]byte, len(data))
-		for i := 0; i < len(data); i++ {
-			d[i] = ^data[i]
+		d := make([][]byte, len(dblks))
+		for i := 0; i < len(dblks); i++ {
+			d[i] = make([]byte, len(dblks[i]))
+			for j := 0; j < c.BlockSize(); j++ {
+				d[i][j] = ^dblks[i][j]
+			}
 		}
-		data = d
+		dblks = d
 
 		// TODO: do something similar for metadata
 	}
@@ -196,21 +199,23 @@ func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data []b
 	// start with the 5'-end primer
 	o, _ = long.Copy(p5)
 //	s := ""
-	for i, b := range data {
+	for i, b := range dblks {
 		var ol oligo.Oligo
 
 		// append the data block
-		prefix := o.Slice(o.Len() - c.c0.PrefixLen(), o.Len())
-		ol, err = c.c0.Encode(prefix, uint64(b))
-		if err != nil {
-			return nil, err
+		for _, v := range b {
+			prefix := o.Slice(o.Len() - c.c0.PrefixLen(), 0)
+			ol, err = c.c0.Encode(prefix, uint64(v))
+			if err != nil {
+				return nil, err
+			}
+			o.Append(ol)
 		}
-		o.Append(ol)
 //		s += fmt.Sprintf("%d (%v|%v) ", b, prefix, ol)
 
 		// append the metadata block (if any)
 		if i < len(mdb) {
-			prefix = o.Slice(o.Len() - c.c0.PrefixLen(), 0)
+			prefix := o.Slice(o.Len() - c.c0.PrefixLen(), 0)
 			ol, err = c.c0.Encode(prefix, mdb[i])
 			if err != nil {
 				return nil, err
@@ -327,12 +332,12 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 // If the recover parameter is true, try harder to correct the metadata
 // Returns a byte array for each data block that was recovered
 // (i.e. the parity for the block was correct)
-func (c *Codec) Decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data []byte, err error) {
+func (c *Codec) Decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
 	address, ef, data, err = c.decode(p5, p3, ol, difficulty)
 	return
 }
 
-func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data []byte, err error) {
+func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
 	address, ef, data, err = c.tryDecode(p5, p3, ol, difficulty)
 	return
 }

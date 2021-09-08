@@ -7,7 +7,7 @@ _	"adscodex/oligo/long"
 _	"adscodex/l0"
 )
 
-func (c *Codec) tryDecode(p5, p3, ol oligo.Oligo, difficulty int) (addr uint64, ef bool, data []byte, err error) {
+func (c *Codec) tryDecode(p5, p3, ol oligo.Oligo, difficulty int) (addr uint64, ef bool, dblks [][]byte, err error) {
 	var prefix oligo.Oligo
 
 	vnum := difficulty + 1
@@ -17,7 +17,7 @@ func (c *Codec) tryDecode(p5, p3, ol oligo.Oligo, difficulty int) (addr uint64, 
 		return
 	}
 
-	blks := make([]byte, c.datanum + c.mdnum + c.cmdnum)
+	blks := make([]byte, c.datanum * c.BlockSize() + c.mdnum + c.cmdnum)
 
 	// recursively try to decode each byte
 	ok := c.extractBytes(prefix, ol, 0, blks, vnum)
@@ -26,7 +26,7 @@ func (c *Codec) tryDecode(p5, p3, ol oligo.Oligo, difficulty int) (addr uint64, 
 		return
 	}
 
-	addr, ef, data, err = c.extractOligo(blks)
+	addr, ef, dblks, err = c.extractOligo(blks)
 	return
 }
 
@@ -97,18 +97,22 @@ func (c *Codec) cutPrimers(p5, p3, ol oligo.Oligo) (olcut, prefix oligo.Oligo) {
 	return
 }
 
-func (c *Codec) extractOligo(blks []byte) (addr uint64, ef bool, data []byte, err error) {
+func (c *Codec) extractOligo(blks []byte) (addr uint64, ef bool, data [][]byte, err error) {
 	var sf, ok bool
 
-	data = make([]byte, c.datanum)
+	data = make([][]byte, c.datanum)
 	md := make([]uint64, c.mdnum + c.cmdnum)
 
 	didx := 0
 	mdidx := 0
 	for i := 0; i < len(blks); {
-		data[didx] = blks[i]
+		data[didx] = make([]byte, c.BlockSize())
+		for j := 0; j < c.BlockSize(); j++ {
+			data[didx][j] = blks[i]
+			j++
+			i++
+		}
 		didx++
-		i++
 
 		if mdidx < len(md) {
 			md[mdidx] = uint64(blks[i])
@@ -142,7 +146,9 @@ func (c *Codec) extractOligo(blks []byte) (addr uint64, ef bool, data []byte, er
 	if sf {
 		// invert the data
 		for i := 0; i < len(data); i++ {
-			data[i] = ^data[i]
+			for j := 0; j < len(data[i]); j++ {
+				data[i][j] = ^data[i][j]
+			}
 		}
 	}
 

@@ -175,14 +175,14 @@ func (lt *LookupTable) generateTable(npfx uint64) {
 
 		// invalid entry -> olen = 0
 		for i := 0; i < VariantNum; i++ {
-			dent[i].ol.SetVal(0, 0)
+			dent[i].Ol.SetVal(0, 0)
 		}
 
 		for i := 0; i < len(en.sources) && i < VariantNum; i++ {
 			s := &en.sources[i]
-			dent[i].val = uint16(olmap[s.nol])
-			dent[i].ol.SetVal(s.eol.Len(), s.eol.Uint64())
-			dent[i].prob = float32(s.prob)
+			dent[i].Val = uint16(olmap[s.nol])
+			dent[i].Ol.SetVal(s.eol.Len(), s.eol.Uint64())
+			dent[i].Prob = float32(s.prob)
 		}
 	}
 }

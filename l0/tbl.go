@@ -10,7 +10,7 @@ _	"math"
 )
 
 const (
-	VariantNum = 4
+	VariantNum = 8
 )
 
 // Lookup tables for all prefixes
@@ -31,9 +31,9 @@ type EncTable struct {
 }
 
 type DecVariant struct {
-	val	uint16		// value
-	ol	short.Oligo	// oligo
-	prob	float32		// not sure we need it
+	Val	uint16		// value
+	Ol	short.Oligo	// oligo
+	Prob	float32		// not sure we need it
 }
 	
 type DecTable struct {
@@ -65,7 +65,7 @@ func (lt *LookupTable) getEncode(prefix *short.Oligo, val uint16) oligo.Oligo {
 func (lt *LookupTable) getDecodes(prefix, ol *short.Oligo) []DecVariant {
 	dv := lt.dtbls[prefix.Uint64()].entries[ol.Uint64()]
 	for n := 0; n < len(dv); n++ {
-		if dv[n].ol.Len() == 0 {
+		if dv[n].Ol.Len() == 0 {
 			return dv[0:n]
 		}
 	}
@@ -87,7 +87,7 @@ func (t *DecTable) String(olen int) (ret string) {
 		ret += fmt.Sprintf("\t%v\n", ol)
 		for j := 0; j < len(t.entries[i]); j++ {
 			v := &t.entries[i][j]
-			ret += fmt.Sprintf("\t\t%d\t%v\t%v\n", v.val, &v.ol, v.prob)
+			ret += fmt.Sprintf("\t\t%d\t%v\t%v\n", v.Val, &v.Ol, v.Prob)
 		}
 	}
 

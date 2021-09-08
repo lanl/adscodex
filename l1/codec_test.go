@@ -9,17 +9,19 @@ import (
 	"time"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
-	"adscodex/criteria"
+	"adscodex/l0"
+//	"adscodex/criteria"
 )
 
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block sizee")
+var dbnum = flag.Int("dbnum", 7, "number of data blocks")
+var mdnum = flag.Int("mdnum", 3, "number of metadata blocks")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var mdctype = flag.String("mdctype", "crc", "metadata error detection type (rs or crc)")
 var iternum = flag.Int("iternum", 100, "number of iterations")
 var errnum = flag.Int("errnum", 3, "number of errors")
 var dfclty =  flag.Int("dfclty", 1, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
+var tbl = flag.String("tbl", "../tbl/165o6b8.tbl", "codec table")
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -37,21 +39,19 @@ var failed2 = [...]string {
 
 
 func initTest(t *testing.T) {
-	var err error
-
 	if cdc != nil {
 		return
 	}
 
-	c := criteria.Find(*crit)
-	if c == nil {
-		t.Fatalf("criteria '%s' not found\n", *crit)
-	}
-	
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc, err = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	c0, err := l0.Load(*tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cdc, err = NewCodec(*dbnum, *mdnum, *mdcnum, c0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +70,6 @@ func initTest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-
-	if err := cdc.SetErrorModel("163.emdl", 100000); err != nil {
-		t.Fatalf("Error Model Error: %v\n", err)
-	}
 }
 
 func TestEncode(t *testing.T) {
@@ -84,16 +80,10 @@ func TestEncode(t *testing.T) {
 	maxaddr := cdc.MaxAddr()
 	fmt.Printf("maxaddr: %d\n", maxaddr)
 
-	blks := make([][]byte, cdc.BlockNum())
-	for i := 0; i < len(blks); i++ {
-		blks[i] = make([]byte, cdc.BlockSize())
-	}
-
+	blks := make([]byte, cdc.DataNum())
 	for n := 0; n < 200; n++ {
-		for i := 0; i < len(blks); i++ {
-			for j := 0; j < len(blks[i]); j++ {
-				blks[i][j] = byte(rand.Intn(256))
-			}
+		for j := 0; j < len(blks); j++ {
+			blks[j] = byte(rand.Intn(256))
 		}
 
 		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))
@@ -105,6 +95,7 @@ func TestEncode(t *testing.T) {
 			t.Fatalf("error while encoding: %v\n", err)
 		}
 
+		fmt.Printf(">>> %v\n", ol)
 		tt = time.Now()
 		daddr, dec, dblks, err := cdc.Decode(p5, p3, ol, 0)
 		dt := time.Since(tt)
@@ -121,18 +112,8 @@ func TestEncode(t *testing.T) {
 		}
 
 		for i := 0; i < len(blks); i++ {
-			if dblks[i] == nil {
-				t.Fatalf("nil data block")
-			}
-
-			if len(blks[i]) != len(dblks[i]) {
-				t.Fatalf("blocks length differ")
-			}
-
-			for j := 0; j < len(blks[i]); j++ {
-				if blks[i][j] != dblks[i][j] {
-					t.Fatalf("data doesn't match: %v %v\n", blks, dblks)
-				}
+			if blks[i] != dblks[i] {
+				t.Fatalf("data doesn't match: %v %v\n", blks, dblks)
 			}
 		}
 
@@ -142,39 +123,18 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-func TestRecover2(t *testing.T) {
-	return
-
-	initTest(t)
-
-	for _, s := range failed2 {
-		ol, _ := long.FromString(s)
-		fmt.Printf("%v\n", ol)
-		cdc.Decode(p5, p3, ol, 1)
-
-//		fmt.Printf("%v: %v %v %v %v\n", ol, addr, ec, data, err)
-	}
-}
-
-
 func TestRecover(t *testing.T) {
 	initTest(t)
 
 	nerr := *errnum
 	niter := *iternum
 
-	blks := make([][]byte, cdc.BlockNum())
-	for i := 0; i < len(blks); i++ {
-		blks[i] = make([]byte, cdc.BlockSize())
-	}
-
+	blks := make([]byte, cdc.DataNum())
 	errnum := 0
 	errpositive := 0
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
-			for j := 0; j < len(blks[i]); j++ {
-				blks[i][j] = byte(rand.Intn(256))
-			}
+			blks[i] = byte(rand.Intn(256))
 		}
 
 		addr := uint64(rand.Intn(int(cdc.MaxAddr() - 2)))
@@ -185,6 +145,8 @@ func TestRecover(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error while encoding: %v\n", err)
 		}
+
+//		fmt.Printf(">>> %v\n", ol)
 
 		// add some errors
 		seq := ol.String()
@@ -205,9 +167,10 @@ func TestRecover(t *testing.T) {
 			}
 		}
 		eol, _ := long.FromString(seq)
-		
+
+//		fmt.Printf("--- %v\n", eol)		
 //		tt = time.Now()
-		daddr, dec, _, err := cdc.Decode(p5, p3, eol, *dfclty)
+		daddr, dec, dblks, err := cdc.Decode(p5, p3, eol, *dfclty)
 //		dt := time.Since(tt)
 
 		if err != nil {
@@ -216,20 +179,21 @@ func TestRecover(t *testing.T) {
 
 		if err == nil && (addr != daddr || ec != dec) {
 			errpositive++
-/*
-			fmt.Printf("! addr %d ec %v ", addr, ec)
-			for _, blk := range blks {
-				fmt.Printf("{ ")
-				for _, v := range blk {
-					fmt.Printf("%d, ", v)
-				}
-				fmt.Printf("}, ")
+
+			fmt.Printf("! addr %d ec %v {", addr, ec)
+			for _, v := range blks {
+				fmt.Printf("%d, ", v)
 			}
-			fmt.Printf("\n")
+			fmt.Printf("}\n")
+			fmt.Printf("# daddr %d dec %v {", daddr, dec)
+			for _, v := range dblks {
+				fmt.Printf("%d, ", v)
+			}
+			fmt.Printf("}\n")
 
 			fmt.Printf("- %v\n", ol)
 			fmt.Printf("+ %v\n", eol)
-*/
+
 		}
 /*
 		if err != nil {
@@ -250,19 +214,5 @@ func TestRecover(t *testing.T) {
 	}
 
 //	fmt.Printf("error rate %v false positive rate %v\n", float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
-	fmt.Printf("%d %d %d %s %d %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
-}
-
-func TestRecover3(t *testing.T) {
-	return
-
-	initTest(t)
-
-	addr := uint64(776854)
-	ec := true
-	data := [][]byte { { 154, 0, 250, 51, }, { 18, 203, 161, 93, }, { 195, 108, 106, 133, }, { 191, 162, 73, 60, }, { 4, 22, 210, 242, },}
-	cdc.Encode(p5, p3, addr, ec, data)
-
-	eol, _ := long.FromString("CGACATCTCGATGGCAGCATATGGTGTCAGTAACTGTGTCATTAGCAGACCACGACTACCCGATATTACTGGAAGAGAAGTTTGCGACTACCTTAGTCCCTGCCGTACTTTCGCGTAGTGTAGATATGGCAGTGAGCTGGCAACTTCCA")
-	cdc.Decode(p5, p3, eol, 1)
+	fmt.Printf("%d %d %d %s %d %v %v\n", *dbnum, *mdnum, *mdcnum, *mdctype, *dfclty, float64(errnum)/float64(niter), float64(errpositive)/float64(niter))
 }

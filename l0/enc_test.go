@@ -30,18 +30,25 @@ func testEncode(t *testing.T, c *Codec) {
 			t.Fatalf("decoding failed: %v", err)
 		}
 
-		if val != uint64(va[0].val) {
+		if val != uint64(va[0].Val) {
 			pfx, _ := short.Copy(prefix)
 			o, _ := short.Copy(o1)
-			fmt.Printf("decode doesn't match: prefix %v (%d): %v (%d): %d %d\n", pfx, pfx.Uint64(), o, o.Uint64(), val, va[0].val)
+			fmt.Printf("decode doesn't match: prefix %v (%d): %v (%d): %d %d\n", pfx, pfx.Uint64(), o, o.Uint64(), val, va[0].Val)
 			for i := 0; i < len(va); i++ {
 				v := &va[i]
-				fmt.Printf("\t%d %v %v\n", v.val, &v.ol, v.prob)
+				fmt.Printf("\t%d %v %v\n", v.Val, &v.Ol, v.Prob)
 			}
 
 			fmt.Printf("Encode table for %v\n%v\n", pfx, c.EncodeTable(pfx.Uint64()))
 			fmt.Printf("Decode table for %v\n%v\n", pfx, c.DecodeTable(pfx.Uint64()).String(c.OligoLen()))
-			t.Fatalf("decode doesn't match: %d %d\n", val, va[0].val)
+			t.Fatalf("decode doesn't match: %d %d\n", val, va[0].Val)
+		}
+
+		if o1.String() != va[0].Ol.String() {
+			pfx, _ := short.Copy(prefix)
+			fmt.Printf("+++ %v\n", o1)
+			fmt.Printf("--- %v\n", &va[0].Ol)
+			fmt.Printf("%v\n", c.DecodeTable(pfx.Uint64()).String(c.OligoLen()))
 		}
 
 		i++

@@ -66,10 +66,10 @@ func (tbl *DecTable) Write(w io.Writer, olen, vrntnum int) (err error) {
 	for i := 0; i < 1 << (2 * olen); i++ {
 		for j := 0; j < vrntnum; j++ {
 			v := &tbl.entries[i][j]
-			buf = Pint16(v.val, buf)
-			buf = Pint8(byte(v.ol.Len()), buf)
-			buf = Pint32(uint32(v.ol.Uint64()), buf)
-			buf = Pint32(math.Float32bits(v.prob), buf)
+			buf = Pint16(v.Val, buf)
+			buf = Pint8(byte(v.Ol.Len()), buf)
+			buf = Pint32(uint32(v.Ol.Uint64()), buf)
+			buf = Pint32(math.Float32bits(v.Prob), buf)
 		}
 	}
 
@@ -103,12 +103,12 @@ func (tbl *DecTable) Read(r io.Reader, olen, vnum int) (err error) {
 			v := &ents[i][j]
 
 			v16, p = Gint16(p)
-			v.val = v16
+			v.Val = v16
 			v8, p = Gint8(p)
 			v32, p = Gint32(p)
-			v.ol.SetVal(int(v8), uint64(v16))
+			v.Ol.SetVal(int(v8), uint64(v32))
 			v32, p = Gint32(p)
-			v.prob = math.Float32frombits(v32)
+			v.Prob = math.Float32frombits(v32)
 		}
 	}
 

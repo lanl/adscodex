@@ -11,25 +11,22 @@ _	"os"
 	"adscodex/oligo/long"
 	"adscodex/l0"
 	"adscodex/l1"
-	"adscodex/criteria"
-	"adscodex/utils/errmdl/simple"
+_	"adscodex/criteria"
+	"adscodex/errmdl/simple"
 )
 
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block sizee")
+var dbnum = flag.Int("dbnum", 7, "number of data blocks")
+var mdnum = flag.Int("mdnum", 3, "metadata block sizee")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
-var mdctype = flag.String("mdctype", "rs", "metadata error detection type (rs or crc)")
-var dtctype = flag.String("dtctype", "parity", "data error detection type (parity or even)")
+var mdctype = flag.String("mdctype", "crc", "metadata error detection type (rs or crc)")
 var iternum = flag.Int("iternum", 1000, "number of iterations")
 var ierrate = flag.Float64("ierr", 1.0, "insertion error rate (percent)")
 var derrate = flag.Float64("derr", 1.0, "deletion error rate (percent)")
 var serrate = flag.Float64("serr", 1.0, "substituion error rate (percent)")
 var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
-var crit = flag.String("crit", "h4g2", "criteria")
+var tbl = flag.String("tbl", "../../tbl/165o6b8.tbl", "codec table")
 var seed = flag.Int64("s", 0, "random generator seed")
 var hdr = flag.Bool("hdr", false, "print the header and exit")
-var errmdl = flag.String("emdl", "", "error model file")
-var emdlmaxerrs = flag.Int("emdlmaxerrs", 100, "filter out entries with more than the specified number of errors")
 
 type Stat struct {
 	count	int		// number of tests
@@ -77,7 +74,7 @@ func main() {
 		total.dur += st.dur
 	}
 
-	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdsz, *mdcnum, *mdctype, *dfclty, *ierrate + *derrate + *serrate,
+	fmt.Printf("%d %d %d %v %v %v %v %v %v %v %v %v\n", *dbnum, *mdnum, *mdcnum, *mdctype, *dfclty, *ierrate + *derrate + *serrate,
 		float64(total.mderr)/float64(total.count),
 		float64(total.mdfp)/float64(total.count), 
 		float64(total.dterr)/float64(*dbnum * total.count),
@@ -93,16 +90,15 @@ func initTest() error {
 		return nil
 	}
 
-	l0.SetLookupTablePath("../../tbl")
-	c := criteria.Find(*crit)
-	if c == nil {
-		return fmt.Errorf("criteria '%s' not found\n", *crit)
-	}
-	
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc, err = l1.NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	c0, err := l0.Load(*tbl)
+	if err != nil {
+		return err
+	}
+
+	cdc, err = l1.NewCodec(*dbnum, *mdnum, *mdcnum, c0)
 	if err != nil {
 		return err
 	}
@@ -118,21 +114,6 @@ func initTest() error {
 		err = cdc.SetMetadataChecksum(l1.CSumRS)
 	}
 
-	switch *dtctype {
-	default:
-		err = fmt.Errorf("Error: invalid data EC type")
-
-	case "parity":
-		err = cdc.SetDataChecksum(l1.CSumParity)
-
-	case "even":
-		err = cdc.SetDataChecksum(l1.CSumEven)
-	}
-
-	if *errmdl != "" {
-		err = cdc.SetErrorModel(*errmdl, *emdlmaxerrs)
-	}
-
 	em = simple.New(*ierrate/100, *derrate/100, *serrate/100, 0.8, *seed)
 	if *seed == 0 {
 		rndseed = time.Now().UnixNano()
@@ -146,18 +127,12 @@ func initTest() error {
 func runtest(rseed int64, niter int, ch chan Stat) {
 	var st Stat
 
-	blks := make([][]byte, cdc.BlockNum())
-	for i := 0; i < len(blks); i++ {
-		blks[i] = make([]byte, cdc.BlockSize())
-	}
-
+	blks := make([]byte, cdc.DataNum())
 	rnd := rand.New(rand.NewSource(rndseed))
 	t := time.Now()
 	for n := 0; n < niter; n++ {
 		for i := 0; i < len(blks); i++ {
-			for j := 0; j < len(blks[i]); j++ {
-				blks[i][j] = byte(rnd.Intn(256))
-			}
+			blks[i] = byte(rnd.Intn(256))
 		}
 
 		addr := uint64(rnd.Intn(int(cdc.MaxAddr() - 2)))
@@ -182,17 +157,11 @@ func runtest(rseed int64, niter int, ch chan Stat) {
 		}
 
 		for i := 0; i < len(blks); i++ {
-			if data[i] == nil {
-				st.dterr++
-			} else {
-				d := data[i]
-				b := blks[i]
-				for k := 0; k < len(d); k++ {
-					if d[k] != b[k] {
-						st.dtfp++
-						break
-					}
-				}
+			d := data[i]
+			b := blks[i]
+			if d != b {
+				st.dtfp++
+				break
 			}
 		}
 	}

@@ -14,7 +14,8 @@ var olen = flag.Int("olen", 5, "oligo length")
 var maxval = flag.Int("maxval", 256, "maximum value")
 var crit = flag.String("c", "h4g2", "criteria (currently only h4g2 supported)")
 var emdl = flag.String("e", "minion", "error model")
-var minerr = flag.Float64("minerr", 0.0000001, "minimum error");
+var minerr = flag.Float64("minerr", 0.0000001, "minimum error")
+var print = flag.Bool("p", false, "print the tables")
 
 // Minion (pdist 8)
 var insont = []float64 { 0.003014448720290026, 0.0038674396195582023, 0.002703262547570003, 0.00318277124022496, }
@@ -65,5 +66,9 @@ func main() {
 	err = lt.Write(*fname)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+	}
+
+	if *print {
+		fmt.Printf("%v", lt)
 	}
 }

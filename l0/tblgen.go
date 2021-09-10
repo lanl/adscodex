@@ -47,7 +47,7 @@ func BuildLookupTable(oligoLen, maxVal, pfxLen int, minerr float64, crit criteri
 	lt := newLookupTable(oligoLen, maxVal, pfxLen, minerr, crit, emdl)
 
 	npfx := 1<<(2*pfxLen)
-	ncpu := 1 // runtime.NumCPU()
+	ncpu := runtime.NumCPU()
 	sperproc := 1 + npfx/ncpu
 	pn := 0
 	ch := make(chan bool)
@@ -121,6 +121,14 @@ func (lt *LookupTable) generateTable(npfx uint64) {
 			canonize(e, etbl.olen, func(enol uint64, prob float64) {
 				en := &tbl.entries[enol]
 				en.sources = append(en.sources, GenSource{nol, e.Ol.(*short.Oligo), prob})
+				if len(en.sources) > 8*VariantNum {
+					// cut the sources with lower probability to save memory
+					sort.Slice(en.sources, func(i, j int) bool {
+						return en.sources[i].prob > en.sources[j].prob
+					})
+					en.sources = en.sources[0:VariantNum]
+				}
+
 				if enol != nol {
 					en.prob += prob
 				}

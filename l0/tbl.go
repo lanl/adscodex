@@ -10,7 +10,7 @@ _	"math"
 )
 
 const (
-	VariantNum = 8
+	VariantNum = 4
 )
 
 // Lookup tables for all prefixes
@@ -73,6 +73,29 @@ func (lt *LookupTable) getDecodes(prefix, ol *short.Oligo) []DecVariant {
 	return dv[:]
 }
 
+func (lt *LookupTable) EncodeTable(pfx uint64) *EncTable {
+	return lt.etbls[pfx]
+}
+
+func (lt *LookupTable) DecodeTable(pfx uint64) *DecTable {
+	return lt.dtbls[pfx]
+}
+
+func (lt *LookupTable) String() (ret string) {
+	ret = "Encoding Tables:\n"
+	for npfx := 0; npfx < len(lt.etbls); npfx++ {
+		ret += fmt.Sprintf("%v\n", short.Val(lt.oligoLen, uint64(npfx)))
+		ret += lt.etbls[npfx].String()
+	}
+	ret += "\n\nDecoding Tables:\n"
+	for npfx := 0; npfx < len(lt.etbls); npfx++ {
+		ret += fmt.Sprintf("%v\n", short.Val(lt.oligoLen, uint64(npfx)))
+		ret += lt.dtbls[npfx].String(lt.oligoLen)
+	}
+
+	return
+}
+
 func (t *EncTable) String() (ret string) {
 	for i := 0; i < len(t.oligos); i++ {
 		ret += fmt.Sprintf("\t%d\t%v\n", i, &t.oligos[i])
@@ -93,3 +116,4 @@ func (t *DecTable) String(olen int) (ret string) {
 
 	return
 }
+

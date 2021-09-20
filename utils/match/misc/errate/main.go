@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"encoding/json"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
 	"adscodex/utils/match/file"
+	"adscodex/utils/errmdl/moderate"
 )
 
 var maxerr = flag.Int("err", 0, "Maximum number of errors for match (0 - any)")
@@ -18,6 +20,7 @@ var p3primer = flag.String("p3", "", "3'-end primer")
 var dist = flag.Int("dist", 2, "number of errors allowed in the primers when matching")
 var xprimers = flag.Bool("xp", false, "exclude primers from stats");
 var gotable = flag.Bool("gotbl", false, "produce tables with Go syntax")
+var pjson = flag.Bool("json", false, "print tables in JSON format")
 
 func main() {
 	var errins, errdel, errsub uint64		// number of insertion/deletion/substitution errors
@@ -196,6 +199,30 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
+	}
+
+	// test json
+	if *pjson {
+		var ed moderate.ModerateErrorDescr
+		for i := 0; i < len(insmap); i++ {
+			ed.Ins[i] = float64(insmap[i])/float64(ntcount)
+		}
+		for i := 0; i < len(delmap); i++ {
+			ed.Del[i] = float64(delmap[i])/float64(ntcount)
+		}
+		for i := 0; i < len(submap); i++ {
+			per := float64(ntmap[i])
+			for j := 0; j < len(submap[i]); j++ {
+				ed.Sub[i][j] = float64(submap[i][j])/per
+			}
+		}
+		s, err := json.MarshalIndent(ed, "", "  ")
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+
+		fmt.Printf("%v", string(s))
 		return
 	}
 

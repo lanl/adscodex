@@ -12,7 +12,9 @@ _	"os"
 	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/criteria"
+	"adscodex/utils/errmdl"
 	"adscodex/utils/errmdl/simple"
+	"adscodex/utils/errmdl/moderate"
 )
 
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")
@@ -28,8 +30,9 @@ var dfclty =  flag.Int("dfclty", 0, "decoding difficulty level")
 var crit = flag.String("crit", "h4g2", "criteria")
 var seed = flag.Int64("s", 0, "random generator seed")
 var hdr = flag.Bool("hdr", false, "print the header and exit")
-var errmdl = flag.String("emdl", "", "error model file")
+var emdl = flag.String("emdl", "", "error model file")
 var emdlmaxerrs = flag.Int("emdlmaxerrs", 100, "filter out entries with more than the specified number of errors")
+var mdrt = flag.String("moderate", "", "json file that describes a moderate error model")
 
 type Stat struct {
 	count	int		// number of tests
@@ -43,7 +46,7 @@ type Stat struct {
 
 var cdc *l1.Codec
 var p5, p3 oligo.Oligo
-var em *simple.SimpleErrorModel
+var em errmdl.GenErrMdl
 var rndseed int64
 
 func main() {
@@ -129,11 +132,21 @@ func initTest() error {
 		err = cdc.SetDataChecksum(l1.CSumEven)
 	}
 
-	if *errmdl != "" {
-		err = cdc.SetErrorModel(*errmdl, *emdlmaxerrs)
+	if *emdl != "" {
+		err = cdc.SetErrorModel(*emdl, *emdlmaxerrs)
+	} else {
+		cdc.SetSimpleErrorModel(*ierrate/100, *derrate/100, *serrate/100, *emdlmaxerrs)
 	}
 
-	em = simple.New(*ierrate/100, *derrate/100, *serrate/100, 0.8, *seed)
+	if *mdrt != "" {
+		em, err = moderate.FromJson(*mdrt, 0.8, *seed)
+		if err != nil {
+			return err
+		}
+	} else {
+		em = simple.New(*ierrate/100, *derrate/100, *serrate/100, 0.8, *seed)
+	}
+
 	if *seed == 0 {
 		rndseed = time.Now().UnixNano()
 	} else {

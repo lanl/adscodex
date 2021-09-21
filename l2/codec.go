@@ -116,6 +116,10 @@ func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
 	c.c1.SetSimpleErrorModel(ierr, derr, serr, maxerrs)
 }
 
+func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
+	return c.c1.SetErrorModel(fname, maxerrs)
+}
+
 
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()

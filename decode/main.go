@@ -29,6 +29,8 @@ var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var verbose = flag.Bool("v", false, "verbose")
 var start = flag.Uint64("addr", 0, "start address")
+var emdl = flag.String("emdl", "", "L1 error model table")
+var emdlmax = flag.Int("emdlmax", 100000, "L1 error model max entriest to use")
 
 func main() {
 	flag.Parse()
@@ -93,6 +95,14 @@ func main() {
 	}
 	cdc.SetRandomize(*rndomize)
 	cdc.SetVerbose(*verbose)
+
+	if *emdl != "" {
+		err = cdc.SetErrorModel(*emdl, *emdlmax)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+	}
 
 	var oligos []oligo.Oligo
 

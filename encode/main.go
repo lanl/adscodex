@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"adscodex/oligo/long"
+	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/l2"
 )
@@ -23,6 +24,7 @@ var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var shuffle = flag.Int("shuffle", 0, "random seed for shuffling the order of the oligos (0 disable)")
 var start = flag.Uint64("addr", 0, "start address")
+var tblpath = flag.String("tbl", "", "path to the tables")
 
 func main() {
 	flag.Parse()
@@ -37,6 +39,10 @@ func main() {
 	if !ok {
 		fmt.Printf("Invalid 3'-end primer\n")
 		return
+	}
+
+	if *tblpath != "" {
+		l0.SetLookupTablePath(*tblpath)
 	}
 
 	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)

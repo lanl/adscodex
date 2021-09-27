@@ -8,6 +8,7 @@ import (
 	"runtime/pprof"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
+	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/l2"
 	"adscodex/io/csv"
@@ -31,6 +32,7 @@ var verbose = flag.Bool("v", false, "verbose")
 var start = flag.Uint64("addr", 0, "start address")
 var emdl = flag.String("emdl", "", "L1 error model table")
 var emdlmax = flag.Int("emdlmax", 100000, "L1 error model max entriest to use")
+var tblpath = flag.String("tbl", "", "path to the tables")
 
 func main() {
 	flag.Parse()
@@ -45,6 +47,10 @@ func main() {
 	if !ok {
 		fmt.Printf("Invalid 3'-end primer\n")
 		return
+	}
+
+	if *tblpath != "" {
+		l0.SetLookupTablePath(*tblpath)
 	}
 
 	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)

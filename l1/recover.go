@@ -210,7 +210,7 @@ func (c *Codec) tryDecode(p5, p3, ol oligo.Oligo, difficulty int) (addr uint64, 
 	}
 
 //	fmt.Printf("tryDecode %v\n", ol)
-	mdblks := make([]uint64, c.blknum)
+	mdblks := make([]uint64, c.mdnum)
 	olen := ol.Len()
 	seq := long.New(c.olen)
 	for i := 0; i < len(c.ents) && prob > 0; i++ {
@@ -360,9 +360,9 @@ func (c *Codec) extractMetadata(prefix, ol oligo.Oligo, mdblks []uint64) bool {
 	mdok := true
 
 	// collect metadata
-	for i, mdpos := 0, dblkSize; i < c.blknum; i++ {
+	for i, mdpos := 0, dblkSize; i < c.mdnum; i++ {
 		mdsz := c.mdsz
-		if i >= c.blknum - c.rsnum {
+		if i >= c.mdnum - c.rsnum {
 			mdsz = c.mdcsumLen()	// erasure blocks might be different size
 		}
 
@@ -386,7 +386,11 @@ func (c *Codec) extractMetadata(prefix, ol oligo.Oligo, mdblks []uint64) bool {
 			break
 		}
 
-		mdpos += dblkSize + mdsz
+		mdpos += mdsz
+		if i+1 < c.blknum {
+			mdpos += dblkSize
+		}
+
 	}
 
 	// check if the erasure codes match
@@ -425,7 +429,7 @@ savedblk:
 		dblks = append(dblks, d)
 
 		mdsz := c.mdsz
-		if i >= c.blknum - c.rsnum {
+		if i >= c.mdnum - c.rsnum {
 			mdsz = c.mdcsumLen()
 		}
 
@@ -442,7 +446,7 @@ func (c *Codec) extractOligo(mdblks []uint64, dblks [][]byte) (addr uint64, ef b
 	// FIXME: md can be more than 64 bits
 	maxval := uint64(maxvals[c.mdsz])
 	md := uint64(0)
-	for i := 0; i < c.blknum - c.rsnum; i++ {
+	for i := 0; i < c.mdnum - c.rsnum; i++ {
 		nmd := md * maxval + mdblks[i]
 		if nmd < md {
 			// overflow, panic!

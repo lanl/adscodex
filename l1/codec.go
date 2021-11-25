@@ -35,6 +35,7 @@ const (
 // Level 1 codec
 type Codec struct {
 	blknum	int	// number of data blocks
+	mdnum	int	// number of metadata blocks
 	rsnum	int	// number of Reed-Solomon metadata blocks
 	mdsz	int	// length of the metadata block (in nts)
 	crit	criteria.Criteria
@@ -95,6 +96,11 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err er
 	c.crit = crit
 	c.mdcsum = CSumCRC
 //	c.ents = []Eentry { Eentry{1.0, 0, nil} }
+
+	c.mdnum = blknum
+	if c.mdnum - c.rsnum < 1 {
+		c.mdnum = 1 + rsnum
+	}
 
 	// TODO: make it work with longer metadata blocks
 //	if maxvals[mdsz * rsnum] == 0 {
@@ -166,11 +172,11 @@ func (c *Codec) updateChecksums() (err error) {
 
 		c.crc = nil
 		if c.ec == nil {
-			c.ec, err = reedsolomon.New(c.blknum - c.rsnum, c.rsnum)
+			c.ec, err = reedsolomon.New(c.mdnum - c.rsnum, c.rsnum)
 		}
 
 		c.olen = c.blknum * dblkSize +		// data blocks
-			c.mdsz*(c.blknum - c.rsnum) +	// metadata blocks
+			c.mdsz*(c.mdnum - c.rsnum) +	// metadata blocks
 			5*c.rsnum		  	// metadata erasure blocks (they have to be able to store a byte)
 
 	case CSumCRC:
@@ -183,7 +189,7 @@ func (c *Codec) updateChecksums() (err error) {
 
 		c.crc = crc.NewTable(&crcParams[n])
 		c.olen = c.blknum * dblkSize +		// data blocks
-			c.blknum * c.mdsz		// metadata blocks (including erasure)
+			c.mdnum * c.mdsz		// metadata blocks (including erasure)
 	}
 
 	return
@@ -210,7 +216,7 @@ func (c *Codec) OligoLen() int {
 
 // maximum address that the codec can encode
 func (c *Codec) MaxAddr() uint64 {
-	mdnum := c.blknum - c.rsnum
+	mdnum := c.mdnum - c.rsnum
 
 	ma := uint64(1)
 	maxval :=uint64( maxvals[c.mdsz])
@@ -307,7 +313,8 @@ func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data [][
 	// Construct the oligo
 	// start with the 5'-end primer
 	o, _ = long.Copy(p5)
-	for i := 0; i < c.blknum; i++ {
+	var i int
+	for i = 0; i < c.blknum; i++ {
 		buf := data[i]
 
 		// combine the data bytes into uint64
@@ -346,7 +353,28 @@ func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data [][
 		// We should find a variable-bit-length RS implementation for the 
 		// metadata
 		sz := c.mdsz
-		if i >= c.blknum - c.rsnum {
+		if i >= c.mdnum - c.rsnum {
+			sz = c.mdcsumLen()
+		}
+
+		b, err = l0.Encode(prefix, mdb[i], sz, c.crit)
+		if err != nil {
+			return nil, err
+		}
+
+		o.Append(b)
+	}
+
+	for ; i < c.mdnum; i++ {
+		prefix := o.Slice(o.Len() - 4, 0)
+
+		// FIXME: the RS implementation that we are using works on bytes
+		// So the erasure metadata blocks need to be 8 bits long, no matter
+		// what the size of the metadata blocks is. 
+		// We should find a variable-bit-length RS implementation for the 
+		// metadata
+		sz := c.mdsz
+		if i >= c.mdnum - c.rsnum {
 			sz = c.mdcsumLen()
 		}
 
@@ -383,7 +411,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 	}
 
 	// split the metadata into md blocks
-	mdnum := uint64(c.blknum - c.rsnum)
+	mdnum := uint64(c.mdnum - c.rsnum)
 	mdlen := uint64(maxvals[c.mdsz])
 	mdb := make([]uint64, mdnum + uint64(c.rsnum))
 	for i := int(mdnum - 1); i >= 0; i-- {
@@ -417,7 +445,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 			return nil, err
 		}
 
-		for i := c.blknum - c.rsnum; i < c.blknum; i++ {
+		for i := c.mdnum - c.rsnum; i < c.mdnum; i++ {
 			mdb[i] = uint64(mdshard[i][0])
 		}
 
@@ -432,7 +460,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 		cval = c.crc.CRC(cval)
 //		cv := cval
 		mval := uint64(maxvals[c.mdsz])
-		for i := c.blknum - c.rsnum; i < c.blknum; i++ {
+		for i := c.mdnum - c.rsnum; i < c.mdnum; i++ {
 			mdb[i] = cval % mval
 			cval /= mval
 		}
@@ -462,7 +490,7 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 	case CSumCRC:
 		cval := c.crc.InitCrc()
 //		fmt.Fprintf(os.Stderr, "- mdblks %v\n", mdblks)
-		for i := 0; i < c.blknum - c.rsnum; i++ {
+		for i := 0; i < c.mdnum - c.rsnum; i++ {
 			cval = c.crc.UpdateCrc(cval, []byte { byte(mdblks[i]), byte(mdblks[i]>>8) })
 //			fmt.Fprintf(os.Stderr, "\t%v: %v\n", []byte { byte(mdblks[i]), byte(mdblks[i]>>8)}, cval)
 		}
@@ -470,7 +498,7 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 
 		cval2 := uint64(0)
 		mval := uint64(maxvals[c.mdsz])
-		for i := c.blknum - 1; i >= c.blknum - c.rsnum; i-- {
+		for i := c.mdnum - 1; i >= c.mdnum - c.rsnum; i-- {
 			cval2 = (cval2 * mval) + mdblks[i]
 		}
 

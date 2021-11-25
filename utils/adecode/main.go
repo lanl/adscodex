@@ -30,11 +30,12 @@ var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (pari
 var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var ds = flag.String("ds", "", "dataset file")
+var tblpath = flag.String("tbl", "../../tbl", "path to the tables")
 
 func main() {
 	flag.Parse()
 
-	l0.SetLookupTablePath("../../tbl")
+	l0.SetLookupTablePath(*tblpath)
 
 	p5, ok := long.FromString(*p5str)
 	if !ok {

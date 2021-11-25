@@ -186,6 +186,7 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 
 			o, err = c.c1.Encode(c.p5, c.p3, a, e, rblk)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %d %v\n", a, err)
 				return
 			}
 

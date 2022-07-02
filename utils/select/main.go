@@ -31,6 +31,7 @@ var ftype = flag.String("t", "fastq", "file type")
 var oligolen = flag.Int("l", 0, "if not zero, select only oligos with length +/- 10% of the specified value")
 var useqscore = flag.Bool("q", true, "use quality score (if available)")
 var pcut = flag.Bool("pcut", false, "remove the primers")
+var printids = flag.Bool("printids", false, "print oligos' ids")
 
 var pr5, pr3 oligo.Oligo
 var dspool *utils.Pool
@@ -148,7 +149,11 @@ func main() {
 
 		for _, o := range oligos {
 			s := o.String()
-			fmt.Printf("%v %v %v %v\n", s, o.Qubundance(), o.Count(), idmap[s])
+			if *printids {
+				fmt.Printf("%v %v %v %v\n", s, o.Qubundance(), o.Count(), idmap[s])
+			} else {
+				fmt.Printf("%v %v %v\n", s, o.Qubundance(), o.Count())
+			}
 		}
 	}
 
@@ -170,6 +175,8 @@ func seqproc(ch chan Seq, ech chan bool) {
 	var ok bool
 	var count, ptotal, prcnt uint64
 
+//	pumap := make(map[string]*utils.Oligo)
+//	pidmap := make(map[string][]string)
 	qubu := make([]float64, 500)
 	for {
 		var ol *utils.Oligo
@@ -241,7 +248,9 @@ func seqproc(ch chan Seq, ech chan bool) {
 				umap[ss] = tol
 			}
 
-			idmap[ss] = append(idmap[ss], s.id)
+			if *printids {
+				idmap[ss] = append(idmap[ss], s.id)
+			}
 			ulock.Unlock()
 		} else {
 			fmt.Printf("%v %v %v %s\n", ss, ol.Qubundance(), ol.Count(), s.id)
@@ -252,6 +261,19 @@ func seqproc(ch chan Seq, ech chan bool) {
 	total += ptotal
 	selected += count
 	prcount += prcnt
+/*
+	for k, v := range pumap {
+		if o, ok := umap[k]; ok {
+			o.Inc(v.Count(), v.Qubundances())
+		} else {
+			umap[k] = v
+		}
+	}
+
+	for k, v := range pidmap {
+		idmap[k] = append(idmap[k], v...)
+	}
+*/
 	ulock.Unlock()
 
 	ech <- true

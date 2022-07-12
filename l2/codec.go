@@ -68,14 +68,19 @@ var crctbl = crc64.MakeTable(crc64.ECMA)
 //
 // Additional SetMetadataChecksum and SetDataChecksum functions
 // can be called to change the behavior of the L1 codec
-func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdcsum, dseqnum, rseqnum int) (c *Codec, err error) {
+func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdnum, mdcsum, dseqnum, rseqnum int) (c *Codec, err error) {
 	c = new(Codec)
 	c.p5 = p5
 	c.p3 = p3
 	c.dblknum = dblknum
 	c.dseqnum = dseqnum
 	c.rseqnum = rseqnum
-	c.c1, err = l1.NewCodec(dblknum, mdsz, mdcsum, criteria.H4G2)
+
+	if mdnum == 0 {
+		mdnum = dblknum
+	}
+
+	c.c1, err = l1.NewCodec(dblknum, mdsz, mdnum, mdcsum, criteria.H4G2)
 	if err != nil {
 		c = nil
 		return

@@ -15,6 +15,7 @@ var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")
 var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var mdnum = flag.Int("mdnum", 0, "number of metadata blocks (0 = number of data blocks)")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
@@ -45,7 +46,7 @@ func main() {
 		l0.SetLookupTablePath(*tblpath)
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdnum, *mdcnum, *dseqnum, *rseqnum)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return

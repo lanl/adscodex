@@ -88,7 +88,7 @@ var crcParams = []crc.Parameters {
 	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
 }
 
-func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err error) {
+func NewCodec(blknum, mdsz, mdnum, rsnum int, crit criteria.Criteria) (c *Codec, err error) {
 	c = new(Codec)
 	c.blknum = blknum
 	c.rsnum = rsnum
@@ -97,9 +97,9 @@ func NewCodec(blknum, mdsz, rsnum int, crit criteria.Criteria) (c *Codec, err er
 	c.mdcsum = CSumCRC
 //	c.ents = []Eentry { Eentry{1.0, 0, nil} }
 
-	c.mdnum = blknum
-	if c.mdnum - c.rsnum < 1 {
-		c.mdnum = 1 + rsnum
+	c.mdnum = mdnum
+	if c.mdnum - c.rsnum < 1 || (c.mdnum - c.rsnum) < c.rsnum {
+		c.mdnum++
 	}
 
 	// TODO: make it work with longer metadata blocks

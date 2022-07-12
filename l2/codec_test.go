@@ -65,7 +65,7 @@ func initTest(t *testing.T) {
 
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCA")
 	p3, _ = long.FromString("ATCAGTGAGCTGGCAACTTCCA")
-	cdc, err = NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *eseqnum)
+	cdc, err = NewCodec(p5, p3, *dbnum, *mdsz, *dbnum, *mdcnum, *dseqnum, *eseqnum)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
@@ -140,7 +140,7 @@ func TestEncode(t *testing.T) {
 		fmt.Printf("\nDecoding orig %d with errors %d oligos %d unique...\n", len(oligos), len(nols), len(omap))
 		de := cdc.Decode(0, nextaddr, nols)
 		for i := 0; i < len(de); i++ {
-			fmt.Printf("\textent %d offset %d size %d verified %v\n", i, de[i].Offset, len(de[i].Data), de[i].Verified)
+			fmt.Printf("\textent %d offset %d size %d verified %v\n", i, de[i].Offset, len(de[i].Data), de[i].Type == FileVerified)
 		}
 /*
 		if len(de) == 0 {
@@ -244,7 +244,8 @@ func TestEcGroup(t *testing.T) {
 			}
 
 			for i, d := range ddata {
-				dblks[i] = Blk(d)
+				dblks[i].b = d
+				dblks[i].n = 1
 			}
 
 			eg.addEntry(int(row), dblks, *eseqnum, cdc.ec)
@@ -260,11 +261,11 @@ func TestEcGroup(t *testing.T) {
 				case 0:
 					// nothing for now, it will be handled at the unverfified stage
 				case 1:
-					if len(vd[0]) != 4 {
+					if len(vd[0].b) != 4 {
 						panic(fmt.Sprintf("nooo %d", len(vd)))
 					}
 
-					for i, v := range vd[0] {
+					for i, v := range vd[0].b {
 						if v != data[start + i] {
 //							fmt.Printf("(%d, %d):%d expected %d got %d\n", r, c, start + i, data[start + i], v)
 							ne.verfp++
@@ -287,7 +288,7 @@ func TestEcGroup(t *testing.T) {
 					ne.holesz += 4
 
 				case 1:
-					for i, v := range ud[0] {
+					for i, v := range ud[0].b {
 						if v != data[start + i] {
 							ne.uverfp++
 						} else {

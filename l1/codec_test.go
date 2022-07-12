@@ -51,7 +51,7 @@ func initTest(t *testing.T) {
 	p5, _ = long.FromString("CGACATCTCGATGGCAGCAT")
 	p3, _ = long.FromString("CAGTGAGCTGGCAACTTCCA")
 
-	cdc, err = NewCodec(*dbnum, *mdsz, *mdcnum, criteria.H4G2)
+	cdc, err = NewCodec(*dbnum, *mdsz, *dbnum, *mdcnum, criteria.H4G2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +71,9 @@ func initTest(t *testing.T) {
 		t.Fatalf("Error: %v\n", err)
 	}
 
-	if err := cdc.SetErrorModel("163.emdl", 100000); err != nil {
-		t.Fatalf("Error Model Error: %v\n", err)
-	}
+//	if err := cdc.SetErrorModel("163.emdl", 100000); err != nil {
+//		t.Fatalf("Error Model Error: %v\n", err)
+//	}
 }
 
 func TestEncode(t *testing.T) {

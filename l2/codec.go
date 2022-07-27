@@ -53,6 +53,11 @@ type DecRecord struct {
 	Offset	int64			// file offset (-1 for non-data oligoes like EC oligos or superblocks)
 }
 
+type encData struct {
+	addr	uint64
+	data	[]byte
+}
+
 var Eec = errors.New("parity blocks don't match")
 var crctbl = crc64.MakeTable(crc64.ECMA)
 
@@ -125,7 +130,6 @@ func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
 	return c.c1.SetErrorModel(fname, maxerrs)
 }
 
-
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()
 }
@@ -166,41 +170,81 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 	// repeat the starting super at the end
 	nd = append(nd, super...)
 	fmt.Fprintf(os.Stderr, "original size: %d bytes, new size %d bytes, erasure groups size %d\n", len(data), len(nd), egsz)
-	for len(nd) > 0 {
-		var dblks [][][]byte
 
+	ch := make(chan encData)
+	errch := make(chan error)
+	olch := make(chan oligo.Oligo)
+	nprocs := runtime.NumCPU()
+	for i := 0; i < nprocs; i++ {
+		go func() {
+			for {
+				eg := <- ch
+				if eg.data == nil {
+					break
+				}
+
+				dblks, err := ecGroupEncode(blksz, blknum, c.dseqnum, c.rseqnum, c.ec, eg.data)
+				if err != nil {
+					errch <- err
+					break
+				}
+
+				for i, rblk := range dblks {
+					var o oligo.Oligo
+
+					a := eg.addr + uint64(i)
+					e := false
+					if i >= c.dseqnum {
+						a -= uint64(c.dseqnum)
+						e = true
+					}
+
+					o, err = c.c1.Encode(c.p5, c.p3, a, e, rblk)
+					if err != nil {
+						errch <- err
+						break
+					}
+
+					olch <- o
+				}
+			}
+		}()
+	}
+
+	for len(nd) > 0 {
 		d := nd[0:egsz]
 		if len(d) != egsz {
 			panic("internal error")
 		}
 
-		dblks, err = ecGroupEncode(blksz, blknum, c.dseqnum, c.rseqnum, c.ec, d)
-		if err != nil {
-			return
+		select {
+		case ch <- encData{ addr, d }:
+			addr += uint64(ecgrpaddr)
+			nd = nd[egsz:]
+
+		case err = <-errch:
+			nprocs--
+			goto error
+
+		case ol := <-olch:
+			oligos = append(oligos, ol)
 		}
+	}
 
-		for i, rblk := range dblks {
-			var o oligo.Oligo
+error:
+	// signal procs to exit
+	for i := 0; i < nprocs; {
+		select {
+		case ch <- encData{ 0, nil }:
+			i++;
 
-			a := addr + uint64(i)
-			e := false
-			if i >= c.dseqnum {
-				a -= uint64(c.dseqnum)
-				e = true
-			}
+		case err = <-errch:
+			nprocs--
+			goto error
 
-			o, err = c.c1.Encode(c.p5, c.p3, a, e, rblk)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %d %v\n", a, err)
-				return
-			}
-
-			oligos = append(oligos, o)
-//			fmt.Fprintf(os.Stderr, "%d %v %v\n", a, e, o)
+		case eol := <-olch:
+			oligos = append(oligos, eol)
 		}
-
-		addr += uint64(ecgrpaddr)
-		nd = nd[egsz:]
 	}
 
 	nextaddr = addr

@@ -3,12 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
+	"adscodex/oligo"
 	"adscodex/oligo/long"
 	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/l2"
+	"adscodex/utils"
 )
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
@@ -26,6 +29,8 @@ var rndomize = flag.Bool("rndmz", false, "randomze data")
 var shuffle = flag.Int("shuffle", 0, "random seed for shuffling the order of the oligos (0 disable)")
 var start = flag.Uint64("addr", 0, "start address")
 var tblpath = flag.String("tbl", "", "path to the tables")
+var calcmfe = flag.Bool("mfe", false, "calculate minimum free energy")
+var temp = flag.Float64("temp", 37, "temperature (for calculating mfe)")
 
 func main() {
 	flag.Parse()
@@ -128,7 +133,38 @@ func main() {
 	}
 
 	fmt.Fprintf(os.Stderr, "Address: %v::%v\n", *start, lastaddr)
+
+	var mfemap map[oligo.Oligo]float32
+	minmfe := float32(math.MaxFloat32)
+	maxmfe := float32(-math.MaxFloat32)
+	avgmfe := float32(0)
+	if *calcmfe {
+		mfemap, err = utils.CalculateMfe(oligos, float32(*temp))
+		for _, ol := range oligos {
+			mfe := mfemap[ol]
+			if mfe < minmfe {
+				minmfe = mfe
+			}
+
+			if mfe > maxmfe {
+				maxmfe = mfe
+			}
+
+			avgmfe += mfe
+		}
+
+		avgmfe /= float32(len(oligos))
+	}
+
 	for i, ol := range oligos {
-		fmt.Printf("%v,L%d\n", ol, uint64(i) + *start)
+		if *calcmfe {
+			fmt.Printf("%v,L%d,%f\n", ol, uint64(i) + *start, mfemap[ol])
+		} else {
+			fmt.Printf("%v,L%d\n", ol, uint64(i) + *start)
+		}
+	}
+
+	if *calcmfe {
+		fmt.Fprintf(os.Stderr, "mfe: min %v max %v avg %v\n", minmfe, maxmfe, avgmfe)
 	}
 }

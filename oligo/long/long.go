@@ -172,6 +172,7 @@ func (o *Oligo) Clone() oligo.Oligo {
 //	copy(no.seq, o.seq)
 	no.seq = o.seq
 	no.sharing = true
+	o.sharing = true
 
 	return no
 }

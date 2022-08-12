@@ -193,11 +193,31 @@ func (t *Trie) SearchMin(seq oligo.Oligo) (match *DistSeq) {
 		}
 	}
 
-	match = t.searchMin(strand)
+	match = t.searchMin(strand, 0)
 	return
 }
 
-func (t *Trie) searchMin(strand []byte) (match *DistSeq) {
+func (t *Trie) SearchAtLeast(seq oligo.Oligo, mindist int) (match *DistSeq) {
+	var strand []byte
+
+	if s, ok := seq.(*Oligo); ok {
+		seq = s.ol
+	}
+
+	if s, ok := seq.(*long.Oligo); ok {
+		strand = s.Bytes()
+	} else {
+		strand = make([]byte, seq.Len())
+		for i := 0; i < len(strand); i++ {
+			strand[i] = byte(seq.At(i))
+		}
+	}
+
+	match = t.searchMin(strand, mindist)
+	return
+}
+
+func (t *Trie) searchMin(strand []byte, mindist int) (match *DistSeq) {
 	distances := make([][]int, t.depth + 1)
 	distances[0] = make([]int, len(strand) + 1)
 	for i := 0; i < len(distances[0]); i++ {
@@ -211,17 +231,20 @@ func (t *Trie) searchMin(strand []byte) (match *DistSeq) {
 			continue
 		}
 
-		m := c.searchMinRecursive(i, strand, maxdist, 0, distances)
+		m := c.searchMinRecursive(i, strand, maxdist, mindist, 0, distances)
 		if m != nil {
 			match = m
 			maxdist = m.Dist
+			if maxdist < mindist {
+				break
+			}
 		}
 	}
 
 	return
 }
 
-func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist int, didx int, distances [][]int) (match *DistSeq) {
+func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, didx int, distances [][]int) (match *DistSeq) {
 	colnum := len(strand) + 1
 
 	// Build one row for the letter, with a column for each letter in the target
@@ -274,9 +297,12 @@ func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist int, didx int,
 				continue
 			}
 
-			if m := c.searchMinRecursive(i, strand, maxdist, didx + 1, distances); m != nil {
+			if m := c.searchMinRecursive(i, strand, maxdist, mindist, didx + 1, distances); m != nil {
 				match = m
 				maxdist = m.Dist
+				if maxdist < mindist {
+					break
+				}
 			}
 		}
 	}
@@ -290,4 +316,20 @@ func (t *Trie) Size() int {
 	}
 
 	return 1 + t.chld[0].Size() + t.chld[1].Size() + t.chld[2].Size() + t.chld[3].Size()
+}
+
+func (t *Trie) Clone() (ret *Trie) {
+	if t == nil {
+		return nil
+	}
+
+	ret = new(Trie)
+	ret.bp = t.bp
+	ret.depth = t.depth
+	ret.strand = t.strand
+	for i := 0; i < len(t.chld); i++ {
+		ret.chld[i] = t.chld[i].Clone()
+	}
+
+	return
 }

@@ -181,6 +181,6 @@ func main() {
 
 	fmt.Printf("\n")
 	for n := 0; n < *fnum; n++ {
-		fmt.Printf("%d: correct %v matches %v count %v\n", n, float64(correct[n])/float64(total), avgcnt[n]/total, avgmatch[n]/total)
+		fmt.Printf("Field %d: incorrect %g (%d/%d) matches %v count %v\n", n, float64(total-correct[n])/float64(total), total - correct[n], total, avgcnt[n]/total, avgmatch[n]/total)
 	}
 }

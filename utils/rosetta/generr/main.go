@@ -107,7 +107,7 @@ func main() {
 
 			olg := make([]oligo.Oligo, *fnum)
 			for i := 0; i < ol4proc; i++ {
-				olg[0] = ols[0][rand.Intn(len(ols))]
+				olg[0] = ols[0][rand.Intn(len(ols[0]))]
 				ol := olg[0].Clone()
 				for n := 1; n < *fnum; n++ {
 					olg[n] = ols[n][rand.Intn(len(ols[n]))]

@@ -63,6 +63,39 @@ func (t *Trie) Add(strand oligo.Oligo, idx int) (err error) {
 	return
 }
 
+// Use this method with care. After it is called, the trie is no longer a tree,
+// bug a DAG. It expects all the sequences to be of the same length (i.e.
+// no t.strand to be non-nil if there are children in the trie. The trie t needs
+// be a tree, not DAG. The method doesn't check for loops and will exhaust the
+// stack.
+func (t *Trie) AppendTrie(ot *Trie) int {
+	t.depth = 0
+	if t.strand != nil {
+		for i := 0; i < len(t.chld); i++ {
+			if t.chld[i] != nil {
+				panic("FIXME")
+			}
+
+			t.chld[i] = ot.chld[i]
+			if t.depth < t.chld[i].depth + 1 {
+				t.depth = t.chld[i].depth + 1
+			}
+		}
+		t.strand = nil
+	} else {
+		for i := 0; i < len(t.chld); i++ {
+			if t.chld[i] != nil {
+				d := t.chld[i].AppendTrie(ot) + 1
+				if t.depth < d {
+					t.depth = d
+				}
+			}
+		}
+	}
+
+	return t.depth
+}
+
 func (t *Trie) Search(seq oligo.Oligo, dist int) (match []DistSeq) {
 	var strand []byte
 
@@ -89,19 +122,20 @@ func (t *Trie) search(strand []byte, maxdist int, match []DistSeq) []DistSeq {
 		distances[0][i] = i
 	}
 
+	matchseq := make([]int, t.depth + 1)
 //	fmt.Printf("search: trie %p maxdist %d word: %v\n", t, maxdist, strand)
 	for i, c := range t.chld {
 		if c == nil {
 			continue
 		}
 
-		match = c.searchRecursive(i, strand, maxdist, 0, distances, match)
+		match = c.searchRecursive(i, strand, maxdist, 0, distances, match, matchseq)
 	}
 
 	return match
 }
 
-func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, distances [][]int, match []DistSeq) []DistSeq {
+func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, distances [][]int, match []DistSeq, matchseq []int) []DistSeq {
 	colnum := len(strand) + 1
 
 	// Build one row for the letter, with a column for each letter in the target
@@ -117,6 +151,7 @@ func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, di
 	currentRow[0] = previousRow[0] + 1
 	rowMin := math.MaxUint32
 	for col := 1; col < colnum; col++ {
+		matchseq[didx] = idx
 		insertCost := currentRow[col - 1] + 1
 		deleteCost := previousRow[col] + 1
 		replaceCost := previousRow[col - 1]
@@ -142,7 +177,7 @@ func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, di
 	// if the last entry in the row indicates the optimal cost is less than the
 	// maximum cost, and there is a word in this trie node, then add it.
 	if currentRow[colnum - 1] <= maxdist && t.strand != nil {
-		match = append(match, DistSeq { t.strand, currentRow[colnum - 1] })
+		match = append(match, DistSeq { newSeq(matchseq[0:didx+1]), currentRow[colnum - 1] })
 	}
 
 	// if any entries in the row are less than the maximum cost, then 
@@ -158,7 +193,7 @@ func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, di
 				continue
 			}
 
-			match = c.searchRecursive(i, strand, maxdist, didx + 1, distances, match)
+			match = c.searchRecursive(i, strand, maxdist, didx + 1, distances, match, matchseq)
 		}
 	} else {
 //		fmt.Printf("+++ skip children %p\n", t)
@@ -166,16 +201,6 @@ func (t *Trie) searchRecursive(idx int, strand []byte, maxdist int, didx int, di
 
 	return match
 }
-
-
-
-
-
-
-
-
-
-
 
 func (t *Trie) SearchMin(seq oligo.Oligo) (match *DistSeq) {
 	var strand []byte
@@ -224,6 +249,7 @@ func (t *Trie) searchMin(strand []byte, mindist int) (match *DistSeq) {
 		distances[0][i] = i
 	}
 
+	matchseq := make([]int, t.depth + 1)
 //	fmt.Printf("search: trie %p maxdist %d word: %v\n", t, maxdist, strand)
 	maxdist := len(strand)
 	for i, c := range t.chld {
@@ -231,7 +257,7 @@ func (t *Trie) searchMin(strand []byte, mindist int) (match *DistSeq) {
 			continue
 		}
 
-		m := c.searchMinRecursive(i, strand, maxdist, mindist, 0, distances)
+		m := c.searchMinRecursive(i, strand, maxdist, mindist, 0, distances, matchseq)
 		if m != nil {
 			match = m
 			maxdist = m.Dist
@@ -244,7 +270,16 @@ func (t *Trie) searchMin(strand []byte, mindist int) (match *DistSeq) {
 	return
 }
 
-func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, didx int, distances [][]int) (match *DistSeq) {
+func newSeq(mseq []int) (ol oligo.Oligo) {
+	ol = long.New(len(mseq))
+	for i, nt := range mseq {
+		ol.Set(i, nt)
+	}
+
+	return
+}
+
+func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, didx int, distances [][]int, matchseq []int) (match *DistSeq) {
 	colnum := len(strand) + 1
 
 	// Build one row for the letter, with a column for each letter in the target
@@ -259,6 +294,7 @@ func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, 
 	currentRow[0] = previousRow[0] + 1
 	rowMin := math.MaxUint32
 	for col := 1; col < colnum; col++ {
+		matchseq[didx] = idx
 		insertCost := currentRow[col - 1] + 1
 		deleteCost := previousRow[col] + 1
 		replaceCost := previousRow[col - 1]
@@ -284,7 +320,7 @@ func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, 
 	// maximum cost, and there is a word in this trie node, then add it.
 	if currentRow[colnum - 1] < maxdist && t.strand != nil {
 		match = new(DistSeq)
-		match.Seq = t.strand
+		match.Seq = newSeq(matchseq[0:didx + 1])
 		match.Dist = currentRow[colnum - 1]
 		maxdist = match.Dist
 	}
@@ -297,7 +333,7 @@ func (t *Trie) searchMinRecursive(idx int, strand []byte, maxdist, mindist int, 
 				continue
 			}
 
-			if m := c.searchMinRecursive(i, strand, maxdist, mindist, didx + 1, distances); m != nil {
+			if m := c.searchMinRecursive(i, strand, maxdist, mindist, didx + 1, distances, matchseq); m != nil {
 				match = m
 				maxdist = m.Dist
 				if maxdist < mindist {
@@ -316,6 +352,10 @@ func (t *Trie) Size() int {
 	}
 
 	return 1 + t.chld[0].Size() + t.chld[1].Size() + t.chld[2].Size() + t.chld[3].Size()
+}
+
+func (t *Trie) Depth() int {
+	return t.depth
 }
 
 func (t *Trie) Clone() (ret *Trie) {

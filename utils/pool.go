@@ -210,6 +210,14 @@ func (p *Pool) InitSearch() (err error) {
 	return
 }
 
+func (p *Pool) Trie() *Trie {
+	if p.trie == nil {
+		p.InitSearch()
+	}
+
+	return p.trie
+}
+
 func (p *Pool) Search(ol oligo.Oligo, dist int) (match []DistSeq) {
 	if p.trie == nil {
 		panic("InitSearch has to be called before Search can be used")

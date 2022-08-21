@@ -184,6 +184,16 @@ func TestFind(t *testing.T) {
 	}
 }
 
+func TestFind2(t *testing.T) {
+	seq, _ := FromString("CGGTATTTAGTGAATAC")
+	sub, _ := FromString("GGCGGTATTT")
+
+	p, l := oligo.Find(seq, sub, 5)
+	if p != 0 || l != 8 {
+		t.Fatalf("Find %v in %v should return 0:16 instead of %d:%d", sub, seq, p, l)
+	}
+}
+
 func TestDist(t *testing.T) {
 	o1, _ := FromString("CGACATCTCGATGGCAGCATCACCGTTCGCCGAAGCAAAATACCCCTTCCG")
 	o2, _ := FromString("CGACACCTCGATGGCAGCATCACCGTTCGCCGAACAAAATACCCCTTCCG")

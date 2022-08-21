@@ -230,7 +230,11 @@ func Find(s, subseq Oligo, maxdist int) (pos int, length int) {
 	}
 
 	length = sslen + l[end]
-	pos = end - sslen - l[end]
+	pos = end - length
+	if pos < 0 {
+		length += pos
+		pos = 0
+	}
 
 	return
 }

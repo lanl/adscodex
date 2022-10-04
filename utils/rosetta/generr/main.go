@@ -180,7 +180,9 @@ func main() {
 					atomic.AddUint64(&avgcnt[n], uint64(m))
 				}
 
-				atomic.AddUint64(&total, 1)
+				if atomic.AddUint64(&total, 1) % 1000 == 0 {
+					fmt.Fprintf(os.Stderr, ".")
+				}
 			}
 
 			ch <- true

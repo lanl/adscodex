@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math/rand"
+_	"math/rand"
 	"os"
+	"sync/atomic"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
 	"adscodex/io/csv"
@@ -28,6 +29,7 @@ type Match struct {
 
 func main() {
 	var pr5, pr3 oligo.Oligo
+	var total uint64
 
 	flag.Parse()
 	if *p5 != "" {
@@ -96,51 +98,22 @@ func main() {
 	nprocs := pool.Parallel(1024, func (ols []*utils.Oligo) {
 		var ret []*Match
 		for _, ol := range ols {
-			var mss []utils.DistSeq
-			var d int
+			ms := dspool.SearchMin(ol)
 
-			// find some matches
-			for d = 1; d <= *mdist && (mss==nil || len(mss) == 0); {
-				mss = dspool.Search(ol, d)
-				d *= 2
-			}
-
-			// find the closest distance
-			for _, ms := range mss {
-				if ms.Dist < d {
-					d = ms.Dist
-				}
-			}
-
-			// find the closest matches
-			var matches []oligo.Oligo
-			for _, ms := range mss {
-				if ms.Dist == d {
-					matches = append(matches, ms.Seq)
-				}
-			}
-
-			var match oligo.Oligo
-			switch len(matches) {
-			case 0:
-				fmt.Fprintf(os.Stderr, "no match for %v\n", ol)
+			if ms == nil {
+				fmt.Fprintf(os.Stderr, "%d no match for %v\n", atomic.LoadUint64(&total), ol)
 				continue
-
-			case 1:
-				match = matches[0]
-
-			default:
-				// if there are multiple matches, choose one randomly
-				fmt.Fprintf(os.Stderr, "multiple matches for %v: dist %d matches %d\n", ol, d, len(matches))
-				match = matches[rand.Intn(len(matches))]
 			}
 
 			m := new(Match)
-			m.oligo = match
+			m.oligo = ms.Seq
 			m.seq = ol
 			_, m.diff = oligo.Diff(m.oligo, m.seq)
 
 			ret = append(ret, m)
+			if atomic.AddUint64(&total, 1) % 1000 == 0 {
+				fmt.Fprintf(os.Stderr, ".")
+			}
 		}
 	
 		ch <- ret

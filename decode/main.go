@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"os"
 	"runtime/pprof"
@@ -19,6 +22,7 @@ var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
 var dbnum = flag.Int("dbnum", 5, "number of data blocks")
 var mdsz = flag.Int("mdsz", 4, "metadata block size")
+var mdnum = flag.Int("mdnum", 0, "number of metadata blocks (0 = number of data blocks)")
 var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
@@ -33,6 +37,7 @@ var start = flag.Uint64("addr", 0, "start address")
 var emdl = flag.String("emdl", "", "L1 error model table")
 var emdlmax = flag.Int("emdlmax", 100000, "L1 error model max entriest to use")
 var tblpath = flag.String("tbl", "", "path to the tables")
+var savepic = flag.String("pic", "", "save picture with the recovery results")
 
 func main() {
 	flag.Parse()
@@ -53,7 +58,7 @@ func main() {
 		l0.SetLookupTablePath(*tblpath)
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdnum, *mdcnum, *dseqnum, *rseqnum)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
@@ -179,6 +184,54 @@ func main() {
 		of.Write(d.Data)
 	}
 	of.Close()
+
+	if *savepic != "" {
+		psz := int(math.Sqrt(float64(off))) + 1
+		vclr := color.RGBA{0, 255, 0, 255}
+		uclr := color.RGBA{255, 255, 0, 255}
+		bgclr := color.RGBA{255, 0, 0, 255}
+		hclr := color.RGBA{0, 0, 0, 255}
+		img := image.NewRGBA(image.Rectangle{image.Point{0, 0}, image.Point{psz, psz}})
+
+		var off uint64
+		for i := 0; i < len(data); i++ {
+			d := &data[i]
+			if d.Offset != off {
+				if d.Offset < off {
+					panic(fmt.Sprintf("d.Offset %d off %d\n", d.Offset, off))
+				}
+
+				hsz += d.Offset - off
+			}
+	
+			clr := hclr
+			switch d.Type {
+			case l2.FileVerified:
+				clr = vclr
+
+			case l2.FileUnverified:
+				clr = uclr
+
+			case l2.FileBestGuess:
+				clr = bgclr
+			}
+
+			for i := 0; i < len(d.Data); i++ {
+				o := d.Offset + uint64(i)
+				y := int(o / uint64(psz))
+				x := int(o % uint64(psz))
+				img.Set(x, y, clr)
+			}
+		}
+		f, err := os.Create(*savepic)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error %v\n", err)
+			return
+		}
+
+		err = png.Encode(f, img)
+		f.Close()
+	}
 
 	if len(data) != 1 {
 		fmt.Fprintf(os.Stderr, "Warning: not all data was recovered, the file has holes\n")

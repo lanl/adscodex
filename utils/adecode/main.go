@@ -25,6 +25,7 @@ var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
 var profname = flag.String("prof", "", "profile filename")
 var ftype = flag.String("ftype", "csv", "input file type")
+var mdnum = flag.Int("mdnum", 0, "number of metadata blocks (0 = number of data blocks)")
 var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
 var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
 var compat = flag.Bool("compat", false, "compatibility with 0.9")
@@ -49,7 +50,7 @@ func main() {
 		return
 	}
 
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdnum, *mdcnum, *dseqnum, *rseqnum)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return

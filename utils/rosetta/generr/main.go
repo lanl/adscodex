@@ -28,6 +28,7 @@ var serr = flag.Float64("serr", 0.1, "substitution error per position (percent)"
 var fnum = flag.Int("f", 2, "fragment number")
 var method = flag.String("m", "triecat", "method of matching (old, simple, find, triecat)")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var mserr = flag.Bool("mserr", false, "only count reads that have less than the average number of errors")
 
 var trieCat *utils.Trie
 
@@ -118,6 +119,7 @@ func main() {
 		trieCat = t
 	}
 
+	errnum := int((*ierr + *serr + *derr) * float64(tolen))
 	procnum := runtime.NumCPU()
 	ol4proc := *onum / procnum + 1
 	ch := make(chan bool)
@@ -147,7 +149,10 @@ func main() {
 				}
 
 				for d := 0; d < *depth; d++ {
-					eol, _ := errmdl.GenOne(ol)
+					eol, enum := errmdl.GenOne(ol)
+					if *mserr && enum > errnum {
+						continue
+					}
 
 					if atomic.AddUint64(&progress, 1) % 10000 == 0 {
 						fmt.Fprintf(os.Stderr, ".")
@@ -280,6 +285,10 @@ func matchFind(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map
 // search for the whole sequence in the concatenated trie, then check if any of the fields match
 func matchTriecat(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map[string]int) {
 	m := trieCat.SearchMin(eol)
+	if m == nil {
+		return
+	}
+
 	start := 0
 	for n := 0; n < *fnum; n++ {
 		mol := m.Seq.Slice(start, start+olen[n])

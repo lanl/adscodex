@@ -37,6 +37,16 @@ var sub165 = [][]float64 {
 	{ 0.00030570062071379016, 0.0009591949753494968, 0.00016895939881014508, 0.9985661450051265,  },
 }
 
+// Genscript (fake, based on inserr 0.146%, delerr 2.665%, suberr 0.188%)
+var insgens = []float64 { 0.000365, 0.000365, 0.000365, 0.000365, }
+var delgens = []float64 { 0.0066625, 0.0066625, 0.0066625, 0.0066625, }
+var subgens = [][]float64 {
+	{ 0.99953, 0.000156667, 0.000156667, 0.000156667,  },
+	{ 0.000156667, 0.99953, 0.000156667, 0.000156667,  },
+	{ 0.000156667, 0.000156667, 0.99953, 0.000156667,  },
+	{ 0.000156667, 0.000156667, 0.000156667, 0.99953,  },
+}
+
 func main() {
 	var c criteria.Criteria
 	var em errmdl.ErrMdl
@@ -57,15 +67,22 @@ func main() {
 	case "165":
 		em = moderate.New(ins165, del165, sub165)
 
+	case "genscript":
+		em = moderate.New(insgens, delgens, subgens)
+
 	default:
 		fmt.Printf("Invalid error model\n")
 		return
 	}
 
 	lt := l0.BuildLookupTable(*olen, *maxval, 4, *minerr, c, em)
-	err = lt.Write(*fname)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+	if *fname == "" {
+		fmt.Printf("Error: missing table file name\n")
+	} else {
+		err = lt.Write(*fname)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
 	}
 
 	if *print {

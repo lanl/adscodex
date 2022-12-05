@@ -24,6 +24,11 @@ type Pool struct {
 	newpos	int
 }
 
+type Ctx struct {
+	pool	*Pool
+	newp	*Pool
+}
+
 var olen = flag.Int("olen", 50, "oligo len")
 var mindist = flag.Int("mindist", 15, "minimum distance")
 var onum = flag.Int("onum", -1, "number of oligos")
@@ -86,9 +91,15 @@ func genRand(r *rand.Rand, olen int) (ret oligo.Oligo) {
 func main() {
 	flag.Parse()
 
-	inch := make(chan *Pool)
-	outch := make(chan *Pool)
+	count := 0
+	inch := make(chan *Ctx)
+	outch := make(chan *Ctx)
 	pool := NewPool()
+
+	rndseed := int64(*seed)
+	if rndseed == 0 {
+		rndseed = time.Now().Unix()
+	}
 
 	if *ds != "" {
 		dspool, err := utils.ReadPool([]string{*ds}, false, csv.Parse)
@@ -99,6 +110,8 @@ func main() {
 
 		for _, ol := range dspool.Oligos() {
 			pool.add(ol)
+			fmt.Printf("%v %v 0\n", ol, count)
+			count++
 		}
 
 		fmt.Fprintf(os.Stderr, "Loaded %d oligos\n", len(dspool.Oligos()))
@@ -117,13 +130,13 @@ func main() {
 		tch = time.Tick(5 * time.Minute)
 	}
 
+	cts := make(map[*Ctx] *Pool)
 	for i := 0; i < runtime.NumCPU(); i++ {
 		go func() {
-			rnd := rand.New(rand.NewSource(int64(i) + (int64(*seed) << 16)))
+			rnd := rand.New(rand.NewSource(int64(i) + (int64(rndseed) << 16)))
 
 again:
-			pool := <-inch
-			p := pool.clone()
+			ctx := <-inch
 			count := 0
 			n := 0
 			for {
@@ -132,42 +145,77 @@ again:
 					continue
 				}
 
-				atomic.AddUint64(&total, 1)
-				n++
-				if p.minDist(ol, *mindist) < *mindist {
+				if gc := oligo.GCcontent(ol); gc < 0.4 || gc > 0.6 {
 					continue
 				}
 
+				atomic.AddUint64(&total, 1)
+				n++
 
-				p.add(ol)
+				if ctx.pool.minDist(ol, *mindist) < *mindist {
+					continue
+				}
+
+				if ctx.newp.minDist(ol, *mindist) < *mindist {
+					continue
+				}
+
+				ctx.newp.add(ol)
 				count++
-				if (n > 100000 && count > 0) || count > 10000 {
-					outch <- p
+				if (n > 1000 && count > 0) || count > 100 {
+//					fmt.Fprintf(os.Stderr, ".")
+					outch <- ctx
 					goto again
 				}
 			}
 		}()
 
-		inch <- pool
+		ctx := &Ctx { pool, NewPool() }
+		cts[ctx] = NewPool()
+		inch <- ctx
 	}
 
-	count := 0
 	for *onum == -1 || count < *onum {
 		select {
-		case p := <- outch:
-			for i := p.newpos; i < len(p.ols) && (*onum ==-1 || count < *onum); i++ {
-				o := p.ols[i]
-				mdist := pool.minDist(o, *mindist)
+		case c := <- outch:
+			var ols []oligo.Oligo
+
+			t := atomic.LoadUint64(&total)
+			p := cts[c]
+			delete(cts, c)
+
+			// collect all new oligos that are far enough
+			for _, o := range c.newp.ols {
+				mdist := p.minDist(o, *mindist)
 				if mdist < *mindist {
 					continue
 				}
 
-				fmt.Printf("%v %d %d %d\n", o, count, mdist, atomic.LoadUint64(&total))
-				pool.add(o)
-				count++
+				ols = append(ols, o)
 			}
 
-			inch <- pool
+			if ols != nil {
+				// create a clone and add them
+				pool = pool.clone()
+				for _, o := range ols {
+					count++
+					pool.add(o)
+					fmt.Printf("%v %v %v\n", o, count, t)
+				}
+
+				// then add them to all contexts that are still valid
+				for _, pp := range cts {
+					for _, o := range ols {
+						pp.add(o)
+					}
+				}
+			}
+
+			// send the goroutine a new context
+			ctx := &Ctx { pool, NewPool() }
+			cts[ctx] = NewPool()
+			inch <- ctx
+
 		case <- tch:
 			return
 		}

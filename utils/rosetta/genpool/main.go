@@ -47,9 +47,7 @@ func NewPool() *Pool {
 
 func (p *Pool) add(ol oligo.Oligo) {
 	p.ols = append(p.ols, ol)
-	if err := p.trie.Add(ol, 0); err != nil {
-		panic(err)
-	}
+	p.trie = p.trie.AddClone(ol)
 }
 
 func (p *Pool) minDist(ol oligo.Oligo, mindist int) int {
@@ -63,13 +61,9 @@ func (p *Pool) minDist(ol oligo.Oligo, mindist int) int {
 
 func (p *Pool) clone() (ret *Pool) {
 	ret = new(Pool)
-	if p.ols != nil {
-		ret.ols = make([]oligo.Oligo, len(p.ols))
-		copy(ret.ols, p.ols)
-		ret.newpos = len(ret.ols)
-	}
-
-	ret.trie = p.trie.Clone()
+	ret.ols = p.ols
+	ret.newpos = len(ret.ols)
+	ret.trie = p.trie
 
 	return ret
 }
@@ -195,7 +189,6 @@ again:
 			}
 
 			if ols != nil {
-				// create a clone and add them
 				pool = pool.clone()
 				for _, o := range ols {
 					count++

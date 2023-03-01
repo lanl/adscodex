@@ -6,7 +6,7 @@ _	"errors"
 	"fmt"
 	"math"
 	"math/rand"
-_	"os"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"adscodex/oligo"
@@ -14,7 +14,9 @@ _	"os"
 _	"time"
 _	"adscodex/io/csv"
 _	"adscodex/utils"
+	"adscodex/utils/errmdl"
 	"adscodex/utils/errmdl/simple"
+	"adscodex/utils/errmdl/newer"
 )
 
 var onum = flag.Int("n", 0, "number of sequences to generate")
@@ -24,6 +26,7 @@ var seed = flag.Int64("seed", 0, "seed for the random generator used for the dat
 var ierr = flag.Float64("ierr", 0.1, "insertion error per position (percent)")
 var derr = flag.Float64("derr", 0.1, "deletion error per position (percent)")
 var serr = flag.Float64("serr", 0.1, "substitution error per position (percent)")
+var emname = flag.String("em", "", "newer error model description")
 
 func genRand(r *rand.Rand, olen int) (ret oligo.Oligo) {
 	ret = long.New(olen)
@@ -48,7 +51,9 @@ func main() {
 	}
 
 	var total uint64
+	var lopsided uint64
 
+	avgerr := int(float64(*olen) * (*ierr + *derr + *serr)/100)
 	procnum := runtime.NumCPU()
 	ol4proc := *onum / procnum + 1
 	errhist := make([]map[int]int, procnum)
@@ -56,9 +61,23 @@ func main() {
 	ch := make(chan bool)
 	for i := 0; i < procnum; i++ {
 		go func(id int) {
+			var errmdl errmdl.GenErrMdl
+
 			pseed := int64(id*2) + (int64(*seed)<<16)
 			rnd := rand.New(rand.NewSource(pseed))
-			errmdl := simple.New(*ierr/100, *derr/100, *serr/100, 0.8, pseed + 1)
+			if *emname != "" {
+				em, err := newer.FromJson(*emname, pseed + 1)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					return
+				}
+
+				em.Scale(*ierr/100, *serr/100, *derr/100)
+				errmdl = em
+			} else {
+				errmdl = simple.New(*ierr/100, *derr/100, *serr/100, 0.8, pseed + 1)
+			}
+
 			errhist[id] = make(map[int]int)
 			disthist[id] = make(map[int]int)
 
@@ -75,12 +94,21 @@ func main() {
 						emin = enum
 					}
 
-					dist, _ := oligo.Diff(ol, eol)
+					dist, diff := oligo.Diff(ol, eol)
 					if dmin > dist {
 						dmin = dist
 					}
 					atomic.AddUint64(&total, 1)
 					i++
+					for n, m := 0, 0; n < *olen/2; n++ {
+						if diff[n] != '-' {
+							m++
+							if m >= avgerr {
+								atomic.AddUint64(&lopsided, 1)
+								break
+							}
+						}
+					}
 				}
 
 				if emin != math.MaxInt {
@@ -126,4 +154,6 @@ func main() {
 		dcum += d
 		fmt.Printf("%v %v %v %v %v\n", i, e, d, ecum, dcum)
 	}
+
+	fmt.Printf("lopsided %d/%d %v\n", lopsided, total, avgerr)
 }

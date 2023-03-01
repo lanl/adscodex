@@ -234,6 +234,14 @@ func (p *Pool) SearchMin(ol oligo.Oligo) (match *DistSeq) {
 	return p.trie.SearchMin(ol)
 }
 
+func (p *Pool) SearchSuffix(ol oligo.Oligo) (match *DistSeq) {
+	if p.trie == nil {
+		panic("InitSearch has to be called before Search can be used")
+	}
+
+	return p.trie.SearchSuffix(ol)
+}
+
 func (p *Pool) Sort() {
 	sort.Slice(p.oligos, func(i, j int) bool {
 		return p.oligos[i].Qubundance() > p.oligos[j].Qubundance()

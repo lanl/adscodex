@@ -35,6 +35,7 @@ var onum = flag.Int("onum", -1, "number of oligos")
 var ds = flag.String("ds", "", "restart pool")
 var seed = flag.Int("s", 0, "random generator seed")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var printds = flag.Bool("printds", true, "print the restart pool when you start")
 
 var total uint64
 
@@ -104,7 +105,9 @@ func main() {
 
 		for _, ol := range dspool.Oligos() {
 			pool.add(ol)
-			fmt.Printf("%v %v 0\n", ol, count)
+			if *printds {
+				fmt.Printf("%v %v 0 0\n", ol, count)
+			}
 			count++
 		}
 
@@ -191,9 +194,9 @@ again:
 			if ols != nil {
 				pool = pool.clone()
 				for _, o := range ols {
-					count++
 					pool.add(o)
-					fmt.Printf("%v %v %v\n", o, count, t)
+					fmt.Printf("%v %v %v %v\n", o, count, *mindist, t)
+					count++
 				}
 
 				// then add them to all contexts that are still valid

@@ -9,6 +9,8 @@ _	"math"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
+	"strconv"
 	"sync/atomic"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
@@ -29,6 +31,7 @@ var fnum = flag.Int("f", 2, "fragment number")
 var method = flag.String("m", "triecat", "method of matching (old, simple, find, triecat)")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var mserr = flag.Bool("mserr", false, "only count reads that have less than the average number of errors")
+//var missnum = flag.Int("missnum", 0, "number of fields at the beginning with missing pools")
 
 var trieCat *utils.Trie
 
@@ -48,6 +51,21 @@ func genRand(r *rand.Rand, olen int) (ret oligo.Oligo) {
 			v >>= 2
 			n++
 		}
+	}
+
+	return
+}
+
+func randomOligo(r *rand.Rand, ols []oligo.Oligo, olen int) (ol oligo.Oligo) {
+	if ols != nil {
+		ol = ols[r.Intn(len(ols))]
+	} else {
+		seq := ""
+		for i := 0; i < olen; i++ {
+			seq += oligo.Nt2String(r.Intn(4))
+		}
+
+		ol, _ = long.FromString(seq)
 	}
 
 	return
@@ -86,7 +104,7 @@ func main() {
 	}
 
 	pools := make([]*utils.Pool, *fnum)
-	ols := make([][]*utils.Oligo, *fnum)
+	ols := make([][]oligo.Oligo, *fnum)
 	olen := make([]int, *fnum)
 	var tolen int
 	var total uint64
@@ -95,28 +113,48 @@ func main() {
 
 		if flag.NArg() <= n {
 			pools[n] = pools[n-1]
+			olen[n] = olen[n-1]
+			tolen += olen[n]
 		} else {
-			pools[n], err = utils.ReadPool([]string{flag.Arg(n)}, false, csv.Parse)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				return
+			fname := flag.Arg(n)
+			if !strings.HasPrefix(fname, "+") {
+				pools[n], err = utils.ReadPool([]string{flag.Arg(n)}, false, csv.Parse)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					return
+				}
+
+				pools[n].InitSearch()
+				oss := pools[n].Oligos()
+				ols[n] = make([]oligo.Oligo, len(oss))
+				for i, v := range oss {
+					ols[n][i] = v
+				}
+				olen[n] = ols[n][0].Len()
+				tolen += olen[n]
+			} else {
+				v, e := strconv.ParseInt(fname[1:], 10, 32)
+				if e != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					return
+				}
+
+				olen[n] = int(v)
+				tolen += olen[n]
 			}
-
-			pools[n].InitSearch()
 		}
-
-		ols[n] = pools[n].Oligos()
-		olen[n] = ols[n][0].Len()
-		tolen += olen[n]
 	}
 
 	for i := *fnum - 1; i >= 0; i-- {
-		t := pools[i].Trie().Clone()
-		if trieCat != nil {
-			t.AppendTrie(trieCat)
+		if pools[i] != nil {
+			t := pools[i].Trie().Clone()
+			if trieCat != nil {
+				t.AppendTrie(trieCat)
+			}
+
+			trieCat = t
 		}
 
-		trieCat = t
 	}
 
 	errnum := int((*ierr + *serr + *derr) * float64(tolen))
@@ -132,14 +170,17 @@ func main() {
 	for i := 0; i < procnum; i++ {
 		go func(id int) {
 			pseed := int64(id*2) + (int64(*seed)<<16)
+			rnd := rand.New(rand.NewSource(pseed))
 			errmdl := simple.New(*ierr/100, *derr/100, *serr/100, 0.8, pseed + 1)
 
 			olg := make([]oligo.Oligo, *fnum)
 			for i := 0; i < ol4proc; i++ {
-				olg[0] = ols[0][rand.Intn(len(ols[0]))]
+				olg[0] = randomOligo(rnd, ols[0], olen[0])
+//				olg[0] = ols[0][rand.Intn(len(ols[0]))]
 				ol := olg[0].Clone()
 				for n := 1; n < *fnum; n++ {
-					olg[n] = ols[n][rand.Intn(len(ols[n]))]
+//					olg[n] = ols[n][rand.Intn(len(ols[n]))]
+					olg[n] = randomOligo(rnd, ols[n], olen[n])
 					ol.Append(olg[n])
 				}
 
@@ -207,7 +248,7 @@ func matchOld(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map[
 	start := 0
 	for n := 0; n < *fnum; n++ {
 		eo := eol.Slice(start, start+olen[n])
-		m := pools[n].SearchMin(eo)
+		m := pools[n].SearchSuffix(eo)
 
 		if m != nil {
 			olmap[n][m.Seq.String()]++
@@ -239,7 +280,7 @@ func matchSimple(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []m
 //		}
 
 		eo := eol.Slice(start, start+olen[n])
-		m := pools[n].SearchMin(eo)
+		m := pools[n].SearchSuffix(eo)
 
 		if m != nil {
 			olmap[n][m.Seq.String()]++
@@ -265,7 +306,7 @@ func matchFind(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map
 		}
 
 		eo := eol.Slice(start, start+olen[n])
-		m := pools[n].SearchMin(eo)
+		m := pools[n].SearchSuffix(eo)
 
 		if m != nil {
 			olmap[n][m.Seq.String()]++
@@ -286,15 +327,27 @@ func matchFind(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map
 
 // search for the whole sequence in the concatenated trie, then check if any of the fields match
 func matchTriecat(ol, eol oligo.Oligo, olen []int, pools []*utils.Pool, olmap []map[string]int) {
-	m := trieCat.SearchMin(eol)
+	m := trieCat.SearchSuffix(eol)
 	if m == nil {
 		return
 	}
 
+//	fmt.Printf(" ol: %v\n", ol)
+	fmt.Printf("eol: %v\n", eol)
+//	fmt.Printf("m  : %v\n\n", m.Seq)
+	end := m.Seq.Len()
+	for n := *fnum - 1; n >= 0; n-- {
+		mol := m.Seq.Slice(end - olen[n], end)
+		olmap[n][mol.String()]++
+		end -= olen[n]
+	}
+
+/*
 	start := 0
 	for n := 0; n < *fnum; n++ {
 		mol := m.Seq.Slice(start, start+olen[n])
 		olmap[n][mol.String()]++
 		start += olen[n]
 	}
+*/
 }

@@ -8,7 +8,7 @@ type h4g2 int
 var H4G2 h4g2
 
 func (h4g2) Id() uint64 {
-	return 'H'<<24 | '4'<<16 | 'G' << 8 | '4'
+	return 'H'<<24 | '4'<<16 | 'G' << 8 | '2'
 }
 
 func (h4g2) FeatureLength() int {

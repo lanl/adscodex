@@ -58,9 +58,35 @@ func (t *Trie) add(strand oligo.Oligo, idx int) (depth int, err error) {
 	return t.depth, nil
 }
 
+func (t *Trie) addClone(strand oligo.Oligo, idx int) (nt *Trie) {
+	nt = new(Trie)
+	if t != nil {
+		*nt = *t
+	}
+
+	if idx == strand.Len() {
+		nt.strand = strand
+		return nt
+	}
+
+	bp := strand.At(idx)
+	nc := nt.chld[bp].addClone(strand, idx+1)
+	nc.bp = byte(bp)
+	if nc.depth+1 > nt.depth {
+		nt.depth = nc.depth + 1
+	}
+	nt.chld[bp] = nc
+
+	return nt
+}
+
 func (t *Trie) Add(strand oligo.Oligo, idx int) (err error) {
 	_, err = t.add(strand, idx)
 	return
+}
+
+func (t *Trie) AddClone(strand oligo.Oligo) (nt *Trie) {
+	return t.addClone(strand, 0)
 }
 
 // Use this method with care. After it is called, the trie is no longer a tree,
@@ -372,4 +398,123 @@ func (t *Trie) Clone() (ret *Trie) {
 	}
 
 	return
+}
+
+
+
+
+
+func (t *Trie) SearchSuffix(seq oligo.Oligo) (match *DistSeq) {
+	var strand []byte
+
+	if s, ok := seq.(*Oligo); ok {
+		seq = s.ol
+	}
+
+	if s, ok := seq.(*long.Oligo); ok {
+		strand = s.Bytes()
+	} else {
+		strand = make([]byte, seq.Len())
+		for i := 0; i < len(strand); i++ {
+			strand[i] = byte(seq.At(i))
+		}
+	}
+
+	match = t.searchSuffix(strand, 0)
+	return
+}
+
+func (t *Trie) searchSuffix(strand []byte, mindist int) (match *DistSeq) {
+	distances := make([][]int, t.depth + 1)
+	distances[0] = make([]int, len(strand) + 1)
+	for i := 0; i < len(distances[0]); i++ {
+		distances[0][i] = 0
+	}
+
+	matchseq := make([]int, t.depth + 1)
+//	fmt.Printf("search: trie %p maxdist %d word: %v\n", t, maxdist, strand)
+	maxdist := len(strand)
+	for i, c := range t.chld {
+		if c == nil {
+			continue
+		}
+
+		m := c.searchSuffixRecursive(i, strand, maxdist, mindist, 0, distances, matchseq)
+		if m != nil {
+			match = m
+			maxdist = m.Dist
+			if maxdist < mindist {
+				break
+			}
+		}
+	}
+
+	return
+}
+
+func (t *Trie) searchSuffixRecursive(idx int, strand []byte, maxdist, mindist int, didx int, distances [][]int, matchseq []int) (match *DistSeq) {
+	colnum := len(strand) + 1
+
+	// Build one row for the letter, with a column for each letter in the target
+	// word, plus one for the empty string at column 0
+	previousRow := distances[didx]
+	currentRow := distances[didx + 1]
+	if currentRow == nil {
+		currentRow = make([]int, colnum)
+		distances[didx + 1] = currentRow
+	}
+
+	currentRow[0] = previousRow[0] + 1
+	rowMin := math.MaxUint32
+	for col := 1; col < colnum; col++ {
+		matchseq[didx] = idx
+		insertCost := currentRow[col - 1] + 1
+		deleteCost := previousRow[col] + 1
+		replaceCost := previousRow[col - 1]
+		if strand[col - 1] != byte(idx) {
+			replaceCost++
+		}
+
+		minCost := insertCost
+		if minCost > deleteCost {
+			minCost = deleteCost
+		}
+		if minCost > replaceCost {
+			minCost = replaceCost
+		}
+
+		currentRow[col] = minCost
+		if rowMin > minCost {
+			rowMin = minCost
+		}
+	}
+
+	// if the last entry in the row indicates the optimal cost is less than the
+	// maximum cost, and there is a word in this trie node, then add it.
+	if currentRow[colnum - 1] < maxdist && t.strand != nil {
+		match = new(DistSeq)
+		match.Seq = newSeq(matchseq[0:didx + 1])
+		match.Dist = currentRow[colnum - 1]
+		maxdist = match.Dist
+	}
+
+	// if any entries in the row are less than the maximum cost, then 
+	// recursively search each branch of the trie
+	if rowMin < maxdist {
+		for i, c := range t.chld {
+			if c == nil {
+				continue
+			}
+
+			if m := c.searchSuffixRecursive(i, strand, maxdist, mindist, didx + 1, distances, matchseq); m != nil {
+				match = m
+				maxdist = m.Dist
+				if maxdist < mindist {
+					break
+				}
+			}
+		}
+	}
+
+	return match
 }

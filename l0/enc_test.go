@@ -1,12 +1,15 @@
 package l0
 
 import (
-	"math/rand"
+	"fmt"
+_	"math/rand"
 	"testing"
+	"adscodex/oligo"
 	"adscodex/oligo/short"
-	"adscodex/criteria"
+_	"adscodex/criteria"
 )
 
+/*
 func testEncode(t *testing.T, olen int, crit criteria.Criteria) {
 	for i := 0; i < *iternum; {
 		prefix := randomOligo(4)
@@ -48,4 +51,51 @@ func testEncode(t *testing.T, olen int, crit criteria.Criteria) {
 func TestEncode(t *testing.T) {
 	testEncode(t, 4, criteria.H4G2)
 //	testEncode(t, 17)
+}
+*/
+
+func TestGroup(t *testing.T) {
+	var err error
+	var ol oligo.Oligo
+	var retvals []int
+	var dist int
+
+	fmt.Printf("Create group...")
+	pfx, _ := short.FromString("ACCT")
+	g, err := NewGroup(pfx, []*LookupTable{ ltable, ltable, ltable, ltable, ltable, ltable, ltable, ltable, ltable, ltable }, 100)
+//	g, err := NewGroup(pfx, []*LookupTable{ ltable, ltable,  }, 1)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	fmt.Printf("Done\n")
+
+/*
+	fmt.Printf("Size by depth:")
+	szmap := g.triecat.SizeByDepth()
+	for i := 0; i < 10000; i++ {
+		d, ok := szmap[i]
+		if !ok {
+			break
+		}
+
+		fmt.Printf("\t%d\t%v\n", i, d)
+	}
+*/
+	fmt.Printf("Encode...")
+	vals := []int { 34, 279, 441, 22, 76, 397, 849, 3, 822, 452}
+//	vals := []int { 34, 279,  }
+	ol, err = g.Encode(vals)
+	if err != nil {
+		t.Fatalf("Encode Error: %v\n", err)
+	}
+	fmt.Printf("Done\n")
+
+	fmt.Printf("encoded %v oligo: %v\n", vals, ol)
+
+	retvals, dist, err = g.Decode(pfx, ol)
+	if err != nil {
+		t.Fatalf("Decode Error: %v\n", err)
+	}
+
+	fmt.Printf("decoded vals %v %v dist %d\n", retvals, ol, dist)
 }

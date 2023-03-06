@@ -163,6 +163,16 @@ func TestAppend(t *testing.T) {
 	}
 }
 
+func TestZeroAppend(t *testing.T) {
+	o1 := New(0)
+	o2 := randomOligo(rand.Intn(47))
+
+	o1.Append(o2)
+	if o1.Cmp(o2) != 0 {
+		t.Fatalf("append to empty oligo")
+	}
+}
+
 func TestCopy(t *testing.T) {
 	for i := 0; i < *iternum; i++ {
 		o1 := randomOligo(rand.Intn(47))

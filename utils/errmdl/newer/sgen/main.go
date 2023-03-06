@@ -8,16 +8,16 @@ _	"errors"
 	"time"
 	"adscodex/io/csv"
 	"adscodex/utils"
-	"adscodex/utils/errmdl/simple"
+	"adscodex/utils/errmdl/newer"
 )
 
 var num = flag.Int("n", 0, "number of sequences to generate")
 var seed = flag.Int64("seed", 0, "seed for the random generator used for the data")
 var dsfname = flag.String("ds", "", "synthesis dataset")
-var ierr = flag.Float64("ierr", 0.1, "insertion error per position (percent)")
-var derr = flag.Float64("derr", 0.1, "deletion error per position (percent)")
-var serr = flag.Float64("serr", 0.1, "substitution error per position (percent)")
-var prob = flag.Float64("prob", 0.8,  "probability for negative binomial distribution")
+var mdfname = flag.String("md", "", "model json description")
+var ierr = flag.Float64("ierr", 0, "insertion error per position (percent)")
+var derr = flag.Float64("derr", 0, "deletion error per position (percent)")
+var serr = flag.Float64("serr", 0, "substitution error per position (percent)")
 
 
 func main() {
@@ -33,13 +33,30 @@ func main() {
 		return
 	}
 
+	if *mdfname == "" {
+		fmt.Printf("Expecting model description\n")
+		return
+	}
+
 	s := *seed
 	if s == 0 {
 		s = time.Now().UnixNano()
 	}
 
+	em, err := newer.FromJson(*mdfname, s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
+	}
+
+	em.Scale(*ierr/100, *serr/100, *derr/100)
+//	fmt.Fprintf(os.Stderr, "%v\n", em)
+//	return
+
 	// read the dataset
+	fmt.Fprintf(os.Stderr, "Reading the dataset...")
 	dspool, err := utils.ReadPool([]string { *dsfname }, false, csv.Parse)
+	fmt.Fprintf(os.Stderr, "\n")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
@@ -51,12 +68,12 @@ func main() {
 		return
 	}
 
-	errmdl := simple.New(*ierr/100, *derr/100, *serr/100, *prob, s)
-	rols, nerr, erasnum := errmdl.GenMany(*num, utils.ToOligoArray(oligos))
+//	errmdl := newer.New(*ierr/100, *derr/100, *serr/100, *prob, s)
+	rols, nerr := em.GenMany(*num, utils.ToOligoArray(oligos))
 	for _, o := range rols {
 		fmt.Printf("%v\n", o)
 	}
 
-	fmt.Fprintf(os.Stderr, "%d reads, avg. errors %v, missing oligos %d\n", len(rols), float64(nerr)/float64(len(rols)), erasnum)
+	fmt.Fprintf(os.Stderr, "%d reads, avg. errors %v\n", len(rols), float64(nerr)/float64(len(rols)))
 	return
 }

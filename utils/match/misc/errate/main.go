@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"encoding/json"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
@@ -36,6 +37,7 @@ func main() {
 	var ok bool
 	var p3, p5 oligo.Oligo
 	var p3len, p5len int
+	var bugged, total uint64
 	var mutex sync.Mutex
 
 	flag.Parse()
@@ -116,10 +118,13 @@ func main() {
 			nts += count * olen
 			var icnt, dcnt, scnt int
 			for a := 0; a < len(diff); a++ {
+				atomic.AddUint64(&total, 1)
 				if olen <= i || rlen <= j {
+					atomic.AddUint64(&bugged, 1)
 //					fmt.Printf("\nOrig: %v %d\n", orig, i)
 //					fmt.Printf("Read: %v %d\n", read, j)
 //					fmt.Printf("Diff: %v %d\n", diff, a)
+					continue
 				}
 				switch diff[a] {
 				case '-':
@@ -319,4 +324,6 @@ func main() {
 
 		fmt.Printf("%v\n", tot)
 	}
+
+	fmt.Printf("Bugged: %d of %d\n", bugged, total)
 }

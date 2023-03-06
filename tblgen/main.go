@@ -1,55 +1,95 @@
 package main
 
 import (
+	"bufio"
+	"compress/gzip"
 	"flag"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"adscodex/l0"
-	"adscodex/criteria"
+	"adscodex/oligo/short"
 )
 
-var encfile = flag.String("e", "", "encoding table file name")
-var decfile = flag.String("d", "", "decoding table file name")
-var olen = flag.Int("l", 17, "oligo length")
-var bits = flag.Int("b", 20, "bits in table")
-var crit = flag.String("c", "h4g2", "criteria (currently only h4g2 supported)")
-
 func main() {
-	var c criteria.Criteria
+	var olen int
+	var tbl []uint64
 	var err error
 
 	flag.Parse()
-
-	c = criteria.Find(*crit)
-	if c == nil {
-		fmt.Printf("Error: invalid criteria\n")
-		return
-	}
-
-	if *encfile != "" {
-		lt := l0.BuildEncodingLookupTable(4, *olen, *bits, c)
-		err = lt.Write(*encfile)
+	if flag.NArg() == 1 {
+		olen, tbl, err = l0.ReadTable(flag.Arg(0))
 		if err != nil {
-			goto error
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+	} else {
+		olen, tbl, err = readCsv(flag.Arg(0))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
 		}
 
-		fmt.Printf("Encoding Maxvalues:\n%v\n", lt.MaxVals())
-		fmt.Printf("Encoding Maxvalue:\n%v\n", lt.MaxVal())
-	}
-
-	if *decfile != "" {
-		lt := l0.BuildDecodingLookupTable(4, *olen, *bits, c)
-		err = lt.Write(*decfile)
+		err = l0.WriteTable(olen, tbl, flag.Arg(1))
 		if err != nil {
-			goto error
+			fmt.Printf("Error: %v\n", err)
+			return
 		}
-
-		fmt.Printf("Decoding Maxvalules:\n%v\n", lt.MaxVals())
-		fmt.Printf("Decoding Maxvalue:\n%v\n", lt.MaxVal())
 	}
+
+	fmt.Printf("Oligo length: %d, Max value: %v\n", olen, len(tbl))
 
 	return
+}
 
-error:
-	fmt.Printf("Error: %v\n", err)
+func readCsv(csvFile string) (olen int, tbl []uint64, err error) {
+	var f *os.File
+	var r io.Reader
+	var n int
+
+	f, err = os.Open(csvFile)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	if cf, err := gzip.NewReader(f); err == nil {
+		r = cf
+	} else {
+		r = f
+		f.Seek(0, 0)
+	}
+
+	sc := bufio.NewScanner(r)
+	n = 0
+	for sc.Scan() {
+		line := sc.Text()
+		if line == "" {
+			continue
+		}
+
+		ls := strings.Split(line, " ")
+		if len(ls) == 1 {
+			// support both space-separated and comma-separated
+			ls = strings.Split(line, ",")
+		}
+
+		ol, ok := short.FromString(ls[0])
+		if !ok {
+			err = fmt.Errorf("%d: invalid oligo: %v\n", n, ls[0])
+			return
+		}
+
+		if olen == 0 {
+			olen = ol.Len()
+		} else if olen != ol.Len() {
+			err = fmt.Errorf("%d: oligos of different size: %d: %d", n, olen, ol.Len())
+			return
+		}
+
+		tbl = append(tbl, ol.Uint64())
+	}
+
 	return
 }

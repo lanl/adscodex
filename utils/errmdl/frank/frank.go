@@ -10,35 +10,52 @@ import (
 	"adscodex/utils/errmdl"
 )
 
-type SimpleErrorModel struct {
+type FrankErrorModel struct {
 	sync.Mutex
 
-	// Single oligo error parameters
-	erri	float64		// probability of insertion error
-	errdi	float64		// probability of insertion or deletion error (only deletion error is errdi - erri)
-	err	float64		// total probability of error per position (only substitution error is err - errdi - erri)
-
-	// Oligo abundance error parameters
-	// Negative binomial distributions
-	p	float64
+	p0	float64
+	alpha	float64
+	q	float64
 
 	// pseudorandom source
 	rnd	*rand.Rand
 }
 
-func New(ierr, derr, serr, p float64, seed int64) (em *SimpleErrorModel) {
-	em = new(SimpleErrorModel)
+func NewFrankErrorModel(p0, alpha, q float64, seed int64) (em *FrankErrorModel) {
+	em = new(FrankErrorModel)
 
-	em.erri = ierr
-	em.errdi = ierr + derr
-	em.err = ierr + derr + serr
-	em.p = p
+	em.p0 = p0
+	em.alpha = alpha
+	em.q = q
 
 	em.rnd = rand.New(rand.NewSource(seed))
 	return
 }
 
-func (em  *SimpleErrorModel) GenOne(ol oligo.Oligo) (r oligo.Oligo, errnum int) {
+func (em *FrankErrorModel) bernoulli(p float64) float64 {
+	rnd := em.rnd.Float64()
+	if rnd < p {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+func (em *FrankErrorModel) errnum(olen int) (n int) {
+	var p float64
+
+	if bernoulli(em.alpha) == 1 {
+		p = em.p0
+	} else {
+		pi := ???
+	}
+	for i := 0; i < n; i++ {
+		n += bernoulli(em.p0)
+	}
+		
+}
+
+func (em  *FrankErrorModel) GenOne(ol oligo.Oligo) (r oligo.Oligo, errnum int) {
 	seq := ol.String()
 
 	em.Lock()
@@ -50,7 +67,7 @@ func (em  *SimpleErrorModel) GenOne(ol oligo.Oligo) (r oligo.Oligo, errnum int) 
 }
 
 // the random source needs to be locked
-func (em  *SimpleErrorModel) genOneLocked(ol oligo.Oligo) (r oligo.Oligo, errnum int) {
+func (em  *FrankErrorModel) genOneLocked(ol oligo.Oligo) (r oligo.Oligo, errnum int) {
 	seq := ol.String()
 	seq, errnum = em.genSeq(seq)
 	r, _ = long.FromString(seq)
@@ -58,7 +75,7 @@ func (em  *SimpleErrorModel) genOneLocked(ol oligo.Oligo) (r oligo.Oligo, errnum
 }
 
 // the random source needs to be locked
-func (em *SimpleErrorModel) genSeq(seq string) (ret string, errnum int) {
+func (em *FrankErrorModel) genSeq(seq string) (ret string, errnum int) {
 	for i := 0; i < len(seq); i++ {
 		p := em.rnd.Float64()
 		if p > em.err {
@@ -99,7 +116,7 @@ func (em *SimpleErrorModel) genSeq(seq string) (ret string, errnum int) {
 	return seq, errnum
 }
 
-func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []oligo.Oligo, errnum, erasnum int) {
+func (em  *FrankErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []oligo.Oligo, errnum int) {
 
 	// first shuffle them so if numreads is low, the order doesn't affect the outcome much
 	em.Lock()
@@ -120,10 +137,6 @@ func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []olig
 			}
 		}
 		count -= n
-
-		if count <= 0 {
-			erasnum++
-		}
 
 		// generate the reads for the oligo
 		for i := 0; i < count; i++ {
@@ -152,7 +165,7 @@ func (em  *SimpleErrorModel) GenMany(numreads int, ols []oligo.Oligo) (rs []olig
 
 }
 
-func (em *SimpleErrorModel) SortedErrors(ol oligo.Oligo, minprob float64) (ret []errmdl.OligoProb) {
+func (em *FrankErrorModel) SortedErrors(ol oligo.Oligo, minprob float64) (ret []errmdl.OligoProb) {
 	fmt.Printf("Sorted Errors: insertion %v deletion %v substitutions %v\n", em.erri, em.errdi - em.erri, em.err - em.errdi)
 	m := make(map[string] float64)
 
@@ -183,7 +196,7 @@ func (em *SimpleErrorModel) SortedErrors(ol oligo.Oligo, minprob float64) (ret [
 	return ols
 }
 
-func (em *SimpleErrorModel) genErrors(prefix, suffix string, err, minerr float64, m map[string] float64) {
+func (em *FrankErrorModel) genErrors(prefix, suffix string, err, minerr float64, m map[string] float64) {
 //	ind := ""
 //	for i := 0; i < len(prefix); i++ {
 //		ind += " ";

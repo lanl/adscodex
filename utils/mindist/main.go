@@ -41,7 +41,7 @@ func main() {
 
 	var total uint32
 	pcent := uint32(len(ols)/100)
-	nprocs := dspool.Parallel(128, func (seqs []*utils.Oligo) {
+	nprocs := dspool.Parallel(256, func (seqs []*utils.Oligo) {
 		var stats []Stat
 
 		for _, s1 := range seqs {

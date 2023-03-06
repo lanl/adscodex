@@ -21,6 +21,10 @@ type Oligo struct {
 // Creates a new short oligo object with the specified length and
 // value of "AAA...AA"
 func New(olen int) *Oligo {
+	if olen > 32 {
+		return nil
+	}
+
 	return &Oligo {olen, 0}
 }
 
@@ -34,7 +38,7 @@ func Val(olen int, val uint64) *Oligo {
 func FromString(s string) (*Oligo, bool) {
 	var v uint64
 
-	if len(s) >= 32 {
+	if len(s) > 32 {
 		return nil, false
 	}
 
@@ -62,7 +66,7 @@ func FromString1(s string) (o *Oligo) {
 func Copy(o oligo.Oligo) (*Oligo, bool) {
 	var v uint64
 
-	if o.Len() >= 32 {
+	if o.Len() > 32 {
 		return nil, false
 	}
 
@@ -170,6 +174,10 @@ func (o *Oligo) Slice(start, end int) oligo.Oligo {
 }
 
 func (o *Oligo) Clone() oligo.Oligo {
+	if o == nil {
+		return nil
+	}
+
 	return &Oligo{o.len, o.seq}
 }
 

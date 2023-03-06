@@ -43,8 +43,21 @@ func Find(name string) Criteria {
 	return criterias[name]
 }
 
+func FindById(id uint64) Criteria {
+	for _, c := range criterias {
+		if c.Id() == id {
+			return c
+		}
+	}
+
+	return nil
+}
+
 // This function is called when the packages is used
 func init() {
 	Register("h4g2", H4G2)
+	Register("h4-2", H4_2)
+	Register("h4/2", H4D2)
 	Register("h4g1", H4G1)
+	Register("h4", H4)
 }

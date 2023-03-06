@@ -6,26 +6,21 @@ import (
 	"math/rand"
 	"os"
 	"adscodex/oligo/long"
-	"adscodex/l0"
-	"adscodex/l1"
 	"adscodex/l2"
 )
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block size")
-var mdnum = flag.Int("mdnum", 0, "number of metadata blocks (0 = number of data blocks)")
-var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
+
+var tblName = flag.String("tbl", "../tbl/32-10.tbl", "table name")
+var maxtime = flag.Int64("maxtime", 1000, "maximumm time (in ms) to spend decoding a sequence")
+
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
-var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
-var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
-var compat = flag.Bool("compat", false, "compatibility with 0.9")
+
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var shuffle = flag.Int("shuffle", 0, "random seed for shuffling the order of the oligos (0 disable)")
 var start = flag.Uint64("addr", 0, "start address")
-var tblpath = flag.String("tbl", "", "path to the tables")
 
 func main() {
 	flag.Parse()
@@ -42,54 +37,14 @@ func main() {
 		return
 	}
 
-	if *tblpath != "" {
-		l0.SetLookupTablePath(*tblpath)
-	}
-
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdnum, *mdcnum, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *tblName, *dseqnum, *rseqnum, *maxtime)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	cdc.SetCompat(*compat)
 
 	if flag.NArg() != 1 {
 		fmt.Printf("Expecting file name\n");
-		return
-	}
-
-	var mc, dc int
-	switch  *mdcsum {
-	default:
-		fmt.Printf("Invalid metadata checksum type\n")
-		return
-
-	case "rs":
-		mc = l1.CSumRS
-
-	case "crc":
-		mc = l1.CSumCRC
-	}
-
-	if err := cdc.SetMetadataChecksum(mc); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-
-	switch  *dtcsum {
-	default:
-		fmt.Printf("Invalid data checksum type: %s\n", *dtcsum)
-		return
-
-	case "parity":
-		dc = l1.CSumParity
-
-	case "even":
-		dc = l1.CSumEven
-	}
-
-	if err := cdc.SetDataChecksum(dc); err != nil {
-		fmt.Printf("Error: %v\n", err)
 		return
 	}
 
@@ -128,7 +83,8 @@ func main() {
 	}
 
 	fmt.Fprintf(os.Stderr, "Address: %v::%v\n", *start, lastaddr)
+	saddr := (*start * uint64((*dseqnum + *rseqnum))) / uint64(*dseqnum)
 	for i, ol := range oligos {
-		fmt.Printf("%v,L%d\n", ol, uint64(i) + *start)
+		fmt.Printf("%v,L%d\n", ol, uint64(i) + saddr)
 	}
 }

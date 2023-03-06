@@ -105,6 +105,31 @@ func GCcontent(o Oligo) float64 {
 	return float64(n)/float64(o.Len())
 }
 
+func MaxHomopolymer(o Oligo) (maxhp int) {
+	l := o.Len()
+	n := 1
+	snt := o.At(0)
+	for i := 1; i < l; i++ {
+		nt := o.At(i)
+		if nt == snt {
+			n++
+		} else {
+			if n > maxhp {
+				maxhp = n
+			}
+
+			snt = nt
+			n = 1
+		}
+	}
+
+	if n > maxhp {
+		maxhp = n
+	}
+
+	return
+}
+
 // Implements Levenshtein distance
 func Distance(a, b Oligo) int {
 	f := make([]int, b.Len() + 1)

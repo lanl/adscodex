@@ -12,14 +12,14 @@ import (
 	"adscodex/criteria"
 )
 
-var iternum = flag.Int("n", 5, "number of iterations")
-var etblname = flag.String("e", "../tbl/encnt17b13.tbl", "encode lookup table")
-var dtblname = flag.String("d", "../tbl/decnt17b7.tbl", "decode lookup table")
-var nts = flag.Int("nt", 4, "if nonzero, generate lookup tables for the specified nt oligos")
-var ebits = flag.Int("eb", 1, "bits for the encoding lookup tables (if n is set)")
-var dbits = flag.Int("db", 1, "bits for the encoding lookup tables (if n is set)")
+//var iternum = flag.Int("n", 5, "number of iterations")
+var tblname = flag.String("tbl", "", "lookup table")
+var olen = flag.Int("olen", 4, "if nonzero, generate lookup tables for the oligo length")
+//var ebits = flag.Int("eb", 1, "bits for the encoding lookup tables (if n is set)")
+//var dbits = flag.Int("db", 1, "bits for the encoding lookup tables (if n is set)")
+var mindist = flag.Int("mindist", 3, "minimum distance")
 
-var etbl, dtbl bool
+var ltable *LookupTable
 
 func randomString(l int) string {
 	// don't allow oligos of 0 length
@@ -48,9 +48,13 @@ func randomOligo(l int) oligo.Oligo {
 }
 
 func loadLookupTables() {
-	etbl = LoadEncodeTable(*etblname, criteria.H4G2) == nil
-	dtbl = LoadDecodeTable(*dtblname, criteria.H4G2) == nil
-}	
+	lt, err := LoadLookupTable("../tbl/o10m3.tbl")
+	if err != nil {
+		fmt.Printf("error while loading lookup table: %v\n", err)
+	}
+
+	ltable = lt
+}
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -59,25 +63,31 @@ func TestMain(m *testing.M) {
 }
 
 func TestGen(t *testing.T) {
-	if *nts == 0 {
+	if *olen == 0 {
 		return
 	}
 
-	if *ebits != 0 {
-		lt := BuildEncodingLookupTable(4, *nts, *ebits, criteria.H4G2)
-		RegisterEncodeTable(lt)
-	}
-
-	if *dbits != 0 {
-		lt := BuildDecodingLookupTable(4, *nts, *dbits, criteria.H4G2)
-		RegisterDecodeTable(lt)
-	}
+	crit := criteria.H4G2
+//	prefix, _ := short.FromString("AAAA")
+//	tbl := BuildTable(prefix, nil, 10, 4, crit)
+	lt := BuildLookupTable(crit, *olen, *mindist, true, 0)
+	fmt.Printf("maxval %d\n", lt.maxval)
 }
 
 func TestIO(t *testing.T) {
+	if *tblname == "" {
+		return
+	}
+
+	lt, err := LoadLookupTable(*tblname)
+	if err != nil {
+		t.Fatalf("error while loading lookup table: %v\n", err)
+	}
+
+	fmt.Printf("table %s maxval %d\n", *tblname, lt.maxval)
 }
 
-
+/*
 func TestPrint(t *testing.T) {
 	return
 
@@ -108,7 +118,7 @@ func TestEncodeTable(t *testing.T) {
 		t.Fatalf("Error while writing: %v\n", err)
 	}
 
-	if _/*lt*/, err := readLookupTable("t", criteria.H4G2); err != nil {
+	if _, err := readLookupTable("t", criteria.H4G2); err != nil {
 		t.Fatalf("Error while reading: %v\n", err)
 	} else {
 
@@ -143,23 +153,10 @@ func TestDecodeTable(t *testing.T) {
 		t.Fatalf("Error while writing: %v\n", err)
 	}
 
-	if _/*lt*/, err := readLookupTable("t", criteria.H4G2); err != nil {
+	if _, err := readLookupTable("t", criteria.H4G2); err != nil {
 		t.Fatalf("Error while reading: %v\n", err)
 	} else {
 
-/*
-	fmt.Printf("oligolen %d pfxlen %d pfxtbl %d\n", lt.oligolen, lt.pfxlen, len(lt.pfxtbl))
-	for p := 0; p < len(lt.pfxtbl); p++ {
-		fmt.Printf("Table for %v\n", short.Val(4, uint64(p)))
-		tbl := lt.pfxtbl[p]
-		if tbl == nil {
-			continue
-		}
-		fmt.Printf("\tbits %d prefix %v maxval %d\n", tbl.bits, tbl.prefix, tbl.maxval)
-		for i, v := range tbl.tbl {
-			fmt.Printf("\t%v: %v\n", short.Val(lt.oligolen, uint64(i)), v)
-		}
-	}
-*/
 	}
 }
+*/

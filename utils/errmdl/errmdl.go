@@ -13,7 +13,7 @@ type GenErrMdl interface {
 	// It uses both the error model for a single oligo as well as the
 	// abundance error model.
 	// Returns an array with numreads elements.
-	GenMany(numreads int, ols []oligo.Oligo) (rols []oligo.Oligo, errnum int)
+	GenMany(numreads int, ols []oligo.Oligo) (rols []oligo.Oligo, errnum, erasnum int)
 }
 
 type OligoProb struct {

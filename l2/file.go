@@ -61,6 +61,7 @@ const (
 	superSize = 8 + 20 + 8			// superblock: size, sha1, crc64
 	superChunkSize = 512 * 1024		// superblock at every 512k
 	maxRecoveryIterations = 65536		// maximum number of iterations to try to match the chunk SHA1
+	maxRecoveryIterationsForce = /*256**/65536		// maximum number of iterations to try to match the chunk SHA1 when the chunk recovery is forced
 )
 
 func newFile(egrows, egcols, elsz, ecnum int, rsenc reedsolomon.Encoder, compat bool, rndmz bool) (f *File) {
@@ -89,11 +90,12 @@ func newFile(egrows, egcols, elsz, ecnum int, rsenc reedsolomon.Encoder, compat 
 
 // triggers the recovery goroutine to try to recover more data
 // if all data is recovered already, returns true
-func (f *File) sync() bool {
+func (f *File) sync() (ret bool) {
 	f.RLock()
-	defer f.RUnlock()
+	ret = f.complete
+	f.RUnlock()
 
-	if f.complete {
+	if ret {
 		return true
 	}
 
@@ -559,6 +561,7 @@ func (f *File) recoverData(cnum int, c *FileChunk, force bool) (complete bool) {
 	var end uint64
 	var maxidx int
 	var vmulti, uvmulti int		// for statistics only
+	var maxi int
 
 	offset := f.chunkStart(cnum)
 	if f.totalsz != 0 && offset > uint64(f.totalsz) {
@@ -615,7 +618,12 @@ func (f *File) recoverData(cnum int, c *FileChunk, force bool) (complete bool) {
 
 	idx = make([]int, len(dss))
 	data = make([]byte, end - offset)
-	for n, done := 0, false; !done && n < maxRecoveryIterations; n++ {
+	maxi = maxRecoveryIterations
+	if force {
+		maxi = maxRecoveryIterationsForce
+	}
+
+	for n, done := 0, false; !done && n < maxi; n++ {
 		// collect the data for the current combination
 		for i, o := 0, 0; i < len(dss); i++ {
 			o += copy(data[o:], dss[i][idx[i]])

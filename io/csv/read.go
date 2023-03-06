@@ -56,20 +56,20 @@ func Parse(fname string, process func(id, sequence string, quality []byte, rever
 
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
-		var seq string
+		var id string
 
 		l := sc.Text()
-		if strings.Contains(l, ",") {
-			ls := strings.Split(l, ",")
-			seq = ls[0]
-		} else if strings.Contains(l, " ") {
-			ls := strings.Split(l, " ")
-			seq = ls[0]
-		} else {
-			seq = l
+		ls := strings.Split(l, ",")
+		if len(ls) == 1 {
+			ls = strings.Split(l, " ")
 		}
 
-		if err := process("", seq, nil, false); err != nil {
+		seq := ls[0]
+		if len(ls) > 1 {
+			id = ls[1]
+		}
+
+		if err := process(id, seq, nil, false); err != nil {
 			return err
 		}
 	}

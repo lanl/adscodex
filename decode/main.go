@@ -8,7 +8,6 @@ import (
 	"runtime/pprof"
 	"adscodex/oligo"
 	"adscodex/oligo/long"
-	"adscodex/l0"
 	"adscodex/l1"
 	"adscodex/l2"
 	"adscodex/io/csv"
@@ -17,22 +16,18 @@ import (
 
 var p5str = flag.String("p5", "CGACATCTCGATGGCAGCAT", "5'-end primer")
 var p3str = flag.String("p3", "CAGTGAGCTGGCAACTTCCA", "3'-end primer")
-var dbnum = flag.Int("dbnum", 5, "number of data blocks")
-var mdsz = flag.Int("mdsz", 4, "metadata block size")
-var mdcnum = flag.Int("mdcnum", 2, "metadata error detection blocks")
+
+var tblName = flag.String("tbl", "../tbl/32-10.tbl", "table name")
+var maxtime = flag.Int64("maxtime", 1000, "maximumm time (in ms) to spend decoding a sequence")
+
 var dseqnum = flag.Int("dseqnum", 3, "number of data oligos per erasure group")
 var rseqnum = flag.Int("rseqnum", 2, "number of erasure oligos per erasure group")
+
 var profname = flag.String("prof", "", "profile filename")
 var ftype = flag.String("ftype", "csv", "input file type")
-var mdcsum = flag.String("mdcsum", "crc", "L1 metadata blocks checksum type (rs for Reed-Solomon, crc for CRC)")
-var dtcsum = flag.String("dtcsum", "parity", "L1 data blocks checksum type (parity or even)")
-var compat = flag.Bool("compat", false, "compatibility with 0.9")
 var rndomize = flag.Bool("rndmz", false, "randomze data")
 var verbose = flag.Bool("v", false, "verbose")
 var start = flag.Uint64("addr", 0, "start address")
-var emdl = flag.String("emdl", "", "L1 error model table")
-var emdlmax = flag.Int("emdlmax", 100000, "L1 error model max entriest to use")
-var tblpath = flag.String("tbl", "", "path to the tables")
 
 func main() {
 	flag.Parse()
@@ -49,68 +44,22 @@ func main() {
 		return
 	}
 
-	if *tblpath != "" {
-		l0.SetLookupTablePath(*tblpath)
-	}
-
-	cdc, err := l2.NewCodec(p5, p3, *dbnum, *mdsz, *mdcnum, *dseqnum, *rseqnum)
+	cdc, err := l2.NewCodec(p5, p3, *tblName, *dseqnum, *rseqnum, *maxtime)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	cdc.SetCompat(*compat)
 
 	if flag.NArg() != 2 {
 		fmt.Printf("Expecting file name\n");
 		return
 	}
 
-	var mc, dc int
-	switch  *mdcsum {
-	default:
-		fmt.Printf("Invalid metadata checksum type\n")
-		return
-
-	case "rs":
-		mc = l1.CSumRS
-
-	case "crc":
-		mc = l1.CSumCRC
-	}
-
-	if err := cdc.SetMetadataChecksum(mc); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-
-	switch  *dtcsum {
-	default:
-		fmt.Printf("Invalid data checksum type: %s\n", *dtcsum)
-		return
-
-	case "parity":
-		dc = l1.CSumParity
-
-	case "even":
-		dc = l1.CSumEven
-	}
-
-	if err := cdc.SetDataChecksum(dc); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
 	cdc.SetRandomize(*rndomize)
 	cdc.SetVerbose(*verbose)
 
-	if *emdl != "" {
-		err = cdc.SetErrorModel(*emdl, *emdlmax)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
-		}
-	}
-
 	var oligos []oligo.Oligo
+	var entries []*l1.Entry
 
 	switch (*ftype) {
 	default:
@@ -118,16 +67,21 @@ func main() {
 
 	case "csv":
 		oligos, err = csv.Read(flag.Arg(0), false)
+		fmt.Fprintf(os.Stderr, "%d oligos\n", len(oligos))
 
 	case "fastq":
 		oligos, err = fastq.Read(flag.Arg(0), false)
+		fmt.Fprintf(os.Stderr, "%d oligos\n", len(oligos))
+
+	case "l1dec":
+		entries, err = l1.ReadEntries(flag.Arg(0))
+		fmt.Fprintf(os.Stderr, "%d entries\n", len(entries))
 	}
 
 	if err != nil {
-		fmt.Printf("Can't  parse input: %v\n", err)
+		fmt.Printf("Can't parse input: %v\n", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "%d oligos\n", len(oligos))
 	if *profname != "" {
 		f, err := os.Create(*profname)
 		if err != nil {
@@ -143,7 +97,14 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	data := cdc.Decode(*start, math.MaxUint64, oligos)
+	var data []l2.DataExtent
+
+	if oligos != nil {
+		data = cdc.Decode(*start, math.MaxUint64, oligos)
+	} else {
+		data = cdc.DecodeL1(*start, math.MaxUint64, entries)
+	}
+
 	of, err := os.Create(flag.Arg(1))
 	if err != nil {
 		fmt.Printf("Error creating the file: %s: %v\n", flag.Arg(1), err)

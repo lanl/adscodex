@@ -2,7 +2,7 @@ package l0
 
 import (
 	"fmt"
-	"math"
+	"os"
 	"adscodex/criteria"
 	"adscodex/oligo"
 	"adscodex/oligo/short"
@@ -12,9 +12,10 @@ import (
 type LookupTable struct {
 	oligolen	int		// oligo length
 	pfxlen		int		// prefix length
+	mindist		int		// minimum distance between oligos
 	crit		criteria.Criteria
 	pfxtbl		[]*Table	// tables for each of the prefixes
-	maxval		int64		// maximum value that can be stored with the criteria at the oligoLen
+	maxval		uint64		// maximum value that can be stored with the criteria at the oligoLen
 }
 
 // Lookup table for a single prefix
@@ -32,128 +33,100 @@ type LookupTable struct {
 // counting that calculates the original value.
 
 type Table struct {
-	bits	int			// how many bits to skip
 	prefix	*short.Oligo		// prefix
-	tbl	[]uint64		// 
+	olen	int			// oligo length
+	mindist	int			// minimum distance
+	etbl	[]uint64		// encoding table
+	dmap	map[uint64]int		// decoding map
+	trie	*Trie
 	maxval	uint64			// maximum value
 }
 
-func newTable(prefix *short.Oligo, bits int) *Table {
+var lookupTablePath string
+var codecTables []*LookupTable;
+
+func newTable(prefix *short.Oligo, olen, mindist int) *Table {
 	tbl := new(Table)
 	tbl.prefix = prefix
-	tbl.bits = bits
+	tbl.olen = olen
+	tbl.mindist = mindist
+	tbl.dmap = make(map[uint64]int)
+	tbl.trie, _ = NewTrie(nil)
 
 	return tbl
 }
 
-func getEncodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
-	if encodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := encodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[oligoLen]
+func getTable(c criteria.Criteria, olen, mindist int) *LookupTable {
+	for _, lt := range codecTables {
+		if lt.oligolen == olen && lt.crit == c && (mindist < 0 || lt.mindist == mindist) {
+			return lt
 		}
 	}
 
-	return
+	return nil
 }
 
-func getDecodeTable(oligoLen int, c criteria.Criteria) (tbl *LookupTable) {
-	if decodeTables != nil {
-		// find tables for the criteria (if any)
-		ctbl := decodeTables[c]
-		if ctbl != nil {
-			// find tables for the oligo len (if any)
-			tbl = ctbl[oligoLen]
+func (lt *LookupTable) register() {
+	// check if it is already registered, just in case
+
+	for _, lt1 := range codecTables {
+		if lt == lt1 {
+			return
+		}
+
+		if lt1.oligolen == lt.oligolen && lt1.crit == lt.crit && lt1.mindist == lt.mindist {
+			return
+//			panic("registering the same table?")
 		}
 	}
 
-	return
+	codecTables = append(codecTables, lt)
 }
 
 // Looks up a value in the encoding table
-// Returns the starting oligo for the "slow" counting as well as 
-// how many more values need to be counted.
-func (lt *LookupTable) encodeLookup(prefix oligo.Oligo, val uint64) (o oligo.Oligo, rest uint64) {
+func (lt *LookupTable) encodeLookup(prefix oligo.Oligo, val uint64) (o oligo.Oligo) {
 	sp, ok := short.Copy(prefix)
 	if !ok {
-		return short.New(lt.oligolen), val
+		panic("prefix too long")
 	}
 
 	tbl := lt.pfxtbl[sp.Uint64()]
-	idx := val >> tbl.bits
-	if idx > uint64(len(tbl.tbl)) {
-		idx = uint64(len(tbl.tbl) - 1)
+	if uint64(val) > lt.maxval {
+		panic("val is too big")
 	}
 
-	o, _ = short.Val(lt.oligolen, tbl.tbl[idx]), val - (idx<<tbl.bits)
-	rest = val - (idx << tbl.bits)
-	return
+	return short.Val(lt.oligolen, tbl.etbl[val])
 }
 
-// Looks up an oligo in the decoding table
-// Returns the starting oligo for the "slow" counting as well
-// as the value associated with that oligo
-func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (o oligo.Oligo, val uint64) {
+// Looks up value the decoding table
+func (lt *LookupTable) decodeLookup(prefix, oo oligo.Oligo) (val int) {
 	sp, ok := short.Copy(prefix)
 	if !ok {
-		return short.New(lt.oligolen), val
+		panic("prefix too long")
 	}
 
 	tbl := lt.pfxtbl[sp.Uint64()]
-
 	so, ok := short.Copy(oo)
 	if !ok {
-		return short.New(lt.oligolen), val
+		panic("oligo is too long")
 	}
 
-	if tbl == nil {
-		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
-		panic("tbl is null")
+	val, ok = tbl.dmap[so.Uint64()]
+	if !ok {
+		panic("oligo not found in the decoding map")
 	}
 
-	if so == nil {
-		fmt.Printf("decodeLookup prefix %v oligo %v\n", prefix, oo)
-		panic("so is null")
-	}
-
-	idx := so.Uint64() >> tbl.bits
-	if idx > uint64(len(tbl.tbl)) {
-		idx = uint64(len(tbl.tbl) - 1)
-	}
-
-	o = short.Val(lt.oligolen, idx<<tbl.bits)
-	val = tbl.tbl[idx]
 	return
 }
 
 func (lt *LookupTable) MaxVal() uint64 {
-	var m uint64
-
-	m = math.MaxInt64
-	for _, t := range lt.pfxtbl {
-		if t.maxval != 0 && m > t.maxval {
-			m = t.maxval
-		}
-	}
-
-	return m
-}
-
-func (lt *LookupTable) MaxVals() string {
-	s := ""
-	for _, t := range lt.pfxtbl {
-		s += fmt.Sprintf("%v %d\n", t.prefix, t.maxval)
-	}
-
-	return s
+	return lt.maxval
 }
 
 // Convert the table to a string (for debugging)
 func (tbl *Table) String(oligolen int) string {
-	s := fmt.Sprintf("Table %p bits %d prefix %v maxval %d\n", tbl, tbl.bits, tbl.prefix, tbl.maxval)
-	for i, v := range tbl.tbl {
+	s := fmt.Sprintf("Table %p prefix %v maxval %d\n", tbl, tbl.prefix, tbl.maxval)
+	for i, v := range tbl.etbl {
 		s += fmt.Sprintf("\t%d: %v\n", i, short.Val(oligolen, v))
 	}
 
@@ -162,7 +135,7 @@ func (tbl *Table) String(oligolen int) string {
 
 // Convert the lookup table to a string (for debugging)
 func (lt *LookupTable) String() string {
-	s := fmt.Sprintf("LookupTable %p oligolen %d pfxlen %d pfxtbl %d\n", lt, lt.oligolen, lt.pfxlen, len(lt.pfxtbl))
+	s := fmt.Sprintf("LookupTable %p oligolen %d pfxlen %d mindist %d maxval %d pfxtbl %d\n", lt, lt.oligolen, lt.pfxlen, lt.mindist, lt.maxval, len(lt.pfxtbl))
 	for p := 0; p < len(lt.pfxtbl); p++ {
 		s += fmt.Sprintf("%v ", short.Val(4, uint64(p)))
 		tbl := lt.pfxtbl[p]
@@ -174,4 +147,37 @@ func (lt *LookupTable) String() string {
 	}
 
 	return s
+}
+
+func LookupTableFilename(c criteria.Criteria, olen, mindist int) string {
+	return fmt.Sprintf("%s/%s_o%d_m%d.tbl", lookupTablePath, c.String(), olen, mindist)
+}
+
+func LoadOrGenerateTable(c criteria.Criteria, olen, mindist int, shuffle bool, maxval int) (lt *LookupTable, err error) {
+	lt = getTable(c, olen, mindist)
+	if lt != nil {
+		return
+	}
+
+	lt, err = LoadLookupTable(LookupTableFilename(c, olen, mindist))
+	if err == nil {
+//		fmt.Printf("lt %p\n", lt)
+		return
+	}
+
+	fmt.Printf("Warning: generating lookup table, this may take awhile...\n")
+	lt = BuildLookupTable(c, olen, mindist, shuffle, maxval)
+	return
+}
+
+func SetLookupTablePath(p string) {
+	lookupTablePath = p
+}
+
+func init() {
+	if s := os.Getenv("ADSTBLPATH"); s != "" {
+		lookupTablePath = s
+	} else {
+		lookupTablePath = "../tbl"
+	}
 }

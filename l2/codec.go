@@ -68,7 +68,7 @@ var crctbl = crc64.MakeTable(crc64.ECMA)
 //
 // Additional SetMetadataChecksum and SetDataChecksum functions
 // can be called to change the behavior of the L1 codec
-func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdnum, mdcsum, dseqnum, rseqnum int) (c *Codec, err error) {
+func NewCodec(p5, p3 oligo.Oligo, dblknum, dblksz, dblkmindist, mdnum, mdsz, mdmindist, mdcnum, dseqnum, rseqnum int, maxtime int64, crit criteria.Criteria) (c *Codec, err error) {
 	c = new(Codec)
 	c.p5 = p5
 	c.p3 = p3
@@ -76,11 +76,7 @@ func NewCodec(p5, p3 oligo.Oligo, dblknum, mdsz, mdnum, mdcsum, dseqnum, rseqnum
 	c.dseqnum = dseqnum
 	c.rseqnum = rseqnum
 
-	if mdnum == 0 {
-		mdnum = dblknum
-	}
-
-	c.c1, err = l1.NewCodec(dblknum, mdsz, mdnum, mdcsum, criteria.H4G2)
+	c.c1, err = l1.NewCodec(p5, p3, dblknum, dblksz, dblkmindist, mdnum, mdsz, mdcnum, mdmindist, crit, maxtime)
 	if err != nil {
 		c = nil
 		return
@@ -100,15 +96,6 @@ func (c *Codec) SetMetadataChecksum(cs int) error {
 	return c.c1.SetMetadataChecksum(cs)
 }
 
-// See the description of the appropriate function in the L1 code
-func (c *Codec) SetDataChecksum(cs int) error {
-	return c.c1.SetDataChecksum(cs)
-}
-
-func (c *Codec) SetCompat(cpt bool) {
-	c.compat = cpt
-}
-
 func (c *Codec) SetRandomize(rndmz bool) {
 	c.rndmz = rndmz
 }
@@ -116,15 +103,6 @@ func (c *Codec) SetRandomize(rndmz bool) {
 func (c *Codec) SetVerbose(v bool) {
 	c.verbose = v
 }
-
-func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
-	c.c1.SetSimpleErrorModel(ierr, derr, serr, maxerrs)
-}
-
-func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
-	return c.c1.SetErrorModel(fname, maxerrs)
-}
-
 
 func (c *Codec) MaxAddr() uint64 {
 	return c.c1.MaxAddr()
@@ -189,7 +167,13 @@ func (c *Codec) Encode(addr uint64, data []byte) (nextaddr uint64, oligos []olig
 				e = true
 			}
 
-			o, err = c.c1.Encode(c.p5, c.p3, a, e, rblk)
+			// FIXME: we know that blksz is 1
+			buf := make([]byte, len(rblk))
+			for i, bb := range(rblk) {
+				buf[i] = bb[0]
+			}
+
+			o, err = c.c1.Encode(a, e, buf)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %d %v\n", a, err)
 				return
@@ -269,7 +253,7 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 					break
 				}
 
-				addr, ef, data, err := c.c1.Decode(c.p5, c.p3, ol, 1)
+				addr, ef, data, _, err := c.c1.Decode(ol)
 				if err != nil {
 //					fmt.Fprintf(os.Stderr, "--- ? ? %v %v\n", ol, err)
 					continue
@@ -281,7 +265,7 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 				}
 
 				for i := 0; i < len(dblks); i++ {
-					dblks[i].b = data[i]
+					dblks[i].b = []byte { data[i] }
 					dblks[i].n = 1
 				}
 
@@ -295,6 +279,64 @@ func (c *Codec) Decode(start, end uint64, oligos []oligo.Oligo) (data []DataExte
 //		fmt.Fprintf(os.Stderr, "sending %v\n", ol)
 		ch <- ol
 		if i != 0 && i%100000==0 {
+			fmt.Fprintf(os.Stderr, "*** %v%%\n", float32(i*100)/float32(len(oligos)))
+			if f.sync() {
+				// we got the whole file, no need to continue
+				break
+			}
+		}
+	}
+
+	// shut down the processing goroutines
+	for i := 0; i < nprocs; i++ {
+		ch <- nil
+	}
+
+	data = f.close()
+	fmt.Fprintf(os.Stderr, "%d extents\n", len(data))
+
+	return
+}
+
+// Same as Decode, but gets an array of L1 entries that were decoded using l1/decode.
+// Return all data that we recovered in data extents
+func (c *Codec) DecodeL1(start, end uint64, entries []*l1.Entry) (data []DataExtent) {
+	// spin up goroutines to decode
+	ch := make(chan *l1.Entry)
+	f := newFile(c.dseqnum + c.rseqnum, c.c1.BlockNum(), c.c1.BlockSize(), c.rseqnum, c.ec, c.compat, c.rndmz)
+	nprocs := runtime.NumCPU()
+	for i := 0; i < nprocs; i++ {
+		go func() {
+			blknum := c.c1.BlockNum()
+			dblks := make([]Blk, blknum)
+			for {
+//				fmt.Fprintf(os.Stderr, "waiting\n")
+				en := <- ch
+				if en == nil {
+					break
+				}
+
+//				fmt.Fprintf(os.Stderr, "--- %d %v %v\n", en.Addr, en.EcFlag, en.Data)
+				if en.Addr < start || en.Addr > end {
+					continue
+				}
+
+				for i := 0; i < len(dblks); i++ {
+					dblks[i].b = []byte { en.Data[i] }
+					dblks[i].n = 1
+				}
+
+				f.add(en.Addr - start, en.EcFlag, dblks)
+			}
+		}()
+	}
+
+	// feed the oligos in the order we got them
+	for i, en := range entries {
+//		fmt.Fprintf(os.Stderr, "sending %v\n", ol)
+		ch <- en
+		if i != 0 && i%10000==0 {
+			fmt.Fprintf(os.Stderr, "*** %v%%\n", float32(i*100)/float32(len(entries)))
 			if f.sync() {
 				// we got the whole file, no need to continue
 				break
@@ -337,15 +379,9 @@ func (c *Codec) DecodeVerbose(start, end uint64, oligos []oligo.Oligo) (data []D
 				var l int
 				var addr uint64
 				var ef bool
-				var data [][]byte
+				var data []byte
 				var err error
-				for l = 0; l < 3; l++ {
-					addr, ef, data, err = c.c1.Decode(c.p5, c.p3, ol, l)
-					if err == nil {
-						break
-					}
-				}
-
+				addr, ef, data, _, err = c.c1.Decode(ol)
 				if err != nil {
 					lck.Lock()
 					recs = append(recs, DecRecord{math.MaxUint64, 0, 0, -1, ol, nil, math.MaxInt64, -1})
@@ -370,8 +406,14 @@ func (c *Codec) DecodeVerbose(start, end uint64, oligos []oligo.Oligo) (data []D
 					off = o - (cnum + 1) * superSize
 				}
 
+				// FIXME
+				d := make([][]byte, len(data))
+				for i, b := range(data) {
+					d[i] = []byte { b }
+				}
+
 				lck.Lock()
-				recs = append(recs, DecRecord{a, ecgrp, ecrow, l, ol, data, oaddr, off})
+				recs = append(recs, DecRecord{a, ecgrp, ecrow, l, ol, d, oaddr, off})
 				lck.Unlock()
 
 				if addr < start || addr > end {
@@ -379,7 +421,7 @@ func (c *Codec) DecodeVerbose(start, end uint64, oligos []oligo.Oligo) (data []D
 				}
 
 				for i := 0; i < len(dblks); i++ {
-					dblks[i].b = data[i]
+					dblks[i].b = d[i]
 					dblks[i].n = 1
 				}
 

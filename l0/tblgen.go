@@ -1,143 +1,134 @@
 package l0
 
 import (
+	"fmt"
+	"math/rand"
+	"runtime"
+	"time"
 	"adscodex/criteria"
+	"adscodex/oligo"
 	"adscodex/oligo/short"
+	"adscodex/oligo/long"
 )
 
 // Build an encoding table for the specified prefix, oligo length and criteria
 // Right now this all works for short oligos only
-func BuildEncodingTable(prefix *short.Oligo, olen, bits int, c criteria.Criteria) (tbl *Table) {
-	var n uint64
+func BuildTable(prefix *short.Oligo, startol oligo.Oligo, olen, mindist int, c criteria.Criteria, shuffle bool, maxval int) (tbl *Table) {
+	tbl = newTable(prefix, olen, mindist)
 
-	tbl = newTable(prefix, bits)
-	o := prefix.Clone()
-	o.Append(short.New(olen))
+	if startol == nil {
+		startol = short.New(olen)
+	}
 
-	olast := prefix.Clone()
-	olast.Next()
-	olast.Append(short.New(olen))
+	ol := startol.Clone()
+	for {
+		var nol oligo.Oligo
+		if prefix != nil {
+			nol = prefix.Clone()
+			nol.Append(ol)
+		} else {
+			nol = ol
+		}
 
-	tbl.tbl = make([]uint64, 0, 1<<(2*olen - bits))
-	for o.Cmp(olast) < 0 {
-		if c.Check(o) {
-			idx := int(n >> bits)
-			if idx >= len(tbl.tbl) {
-
-				s, ok := short.Copy(o.Slice(4, 0))
+		if gc := oligo.GCcontent(ol); c.Check(nol) && gc > 0.4 && gc < 0.6 {
+			m := tbl.trie.SearchMin(ol, nil, -1)
+			if m == nil || m.Dist >= tbl.mindist {
+				tbl.trie.Add(ol, 0)
+				shortol, ok := short.Copy(ol)
 				if !ok {
-					panic("value too big")
+					panic("oligo too big")
 				}
 
-				tbl.tbl = append(tbl.tbl, s.Uint64())
+				tbl.etbl = append(tbl.etbl, shortol.Uint64())
 			}
-			n++
 		}
 
-		if !o.Next() {
+		if !ol.Next() {
+//			fmt.Printf("no next for %v\n", ol)
+			ol = long.New(olen)
+		}
+
+//		fmt.Printf("next %v:%v %v\n", ol, startol, ol.Cmp(startol))
+		if ol.Cmp(startol) == 0 {
 			break
 		}
 	}
 
-	tbl.maxval = n
-	return
-}
-
-// Build a decoding table for the specified prefix, oligo length and criteria
-func BuildDecodingTable(prefix *short.Oligo, olen, nts int, c criteria.Criteria) (tbl *Table) {
-	var n uint64
-
-	bits := 2 * nts
-	tbl = newTable(prefix, bits)
-	o := prefix.Clone()
-	o.Append(short.New(olen))
-
-	olast := prefix.Clone()
-	olast.Next()
-	olast.Append(short.New(olen))
-
-	for o.Cmp(olast) < 0 {
-		s, ok := short.Copy(o.Slice(4, 0))
-		if !ok {
-			panic("value too big")
-		}
-
-		idx := int(s.Uint64() >> bits)
-		if idx >= len(tbl.tbl) {
-			tbl.tbl = append(tbl.tbl, n)
-		}
-
-		if c.Check(o) {
-			n++
-		}
-
-		if !o.Next() {
-			break
-		}
+	if shuffle {
+		rand.Seed(11)
+		rand.Shuffle(len(tbl.etbl), func (i, j int) { tbl.etbl[i], tbl.etbl[j] = tbl.etbl[j], tbl.etbl[i] })
 	}
 
-	tbl.maxval = n
+	if maxval > 0 && len(tbl.etbl) > maxval {
+		tbl.etbl = tbl.etbl[0:maxval]
+	}
+
+	tbl.maxval = uint64(len(tbl.etbl))
+
+	// FIXME: should we shuffle the oligos so the consequent values are not close oligos???
+	for v, o := range tbl.etbl {
+		tbl.dmap[o] = v
+	}
+
+	if tbl.maxval == 0 {
+		return nil
+	}
+
 	return
 }
 
 // build encoding tables for all different prefixes
-func BuildEncodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl *LookupTable) {
+func BuildLookupTable(c criteria.Criteria, olen, mindist int, shuffle bool, maxval int) (ltbl *LookupTable) {
 	ltbl = new(LookupTable)
 	ltbl.oligolen = olen
-	ltbl.pfxlen = pfxlen
+	ltbl.pfxlen = c.FeatureLength()
+	ltbl.mindist = mindist
 	ltbl.crit = c
 
-	prefix := (*short.Oligo)(short.New(pfxlen))
-	ltbl.pfxtbl = make([]*Table, (1<<(pfxlen*2)))
-	done := make(chan uint64)
-	for {
-		go func(pfx *short.Oligo) {
-			idx := pfx.Uint64()
-			ltbl.pfxtbl[idx] = BuildEncodingTable(pfx, olen, bits, c)
-			done <- idx
-		}(prefix.Clone().(*short.Oligo))
+	prefix := (*short.Oligo)(short.New(ltbl.pfxlen))
+	ltbl.pfxtbl = make([]*Table, (1<<(ltbl.pfxlen*2)))
+	pfxch := make(chan *short.Oligo)
+	done := make(chan bool)
+	procnum := runtime.NumCPU()
+	for i := 0; i < procnum; i++ {
+		go func() {
+			for {
+				pfx := <-pfxch
+				if pfx == nil {
+					done <- true
+					return
+				}
 
-		if !prefix.Next() {
-			break
+				fmt.Printf("%v start %v\n", pfx, time.Now())
+				idx := pfx.Uint64()
+				ltbl.pfxtbl[idx] = BuildTable(pfx, nil, olen, mindist, c, shuffle, maxval)
+				fmt.Printf("%v completed\n", pfx)
+			}
+		}()
+	}
+
+	n := 0
+	for n < procnum {
+		select {
+		case <- done:
+			n++
+
+		case pfxch <- prefix:
+			if prefix != nil {
+				prefix = prefix.Clone().(*short.Oligo)
+				if !prefix.Next() {
+					prefix = nil
+				}
+			}
 		}
 	}
 
-
-	for i := 0; i < len(ltbl.pfxtbl); i++ {
-		<-done
+	ltbl.maxval = ltbl.pfxtbl[0].maxval	
+	for _, tbl := range ltbl.pfxtbl {
+		if tbl != nil && ltbl.maxval < tbl.maxval {
+			ltbl.maxval = tbl.maxval
+		}
 	}
 
-	ltbl.maxval = int64(ltbl.MaxVal())
 	return ltbl
-}
-
-// build decoding tables for all different prefixes
-func BuildDecodingLookupTable(pfxlen, olen, bits int, c criteria.Criteria) (ltbl *LookupTable) {
-	ltbl = new(LookupTable)
-	ltbl.oligolen = olen
-	ltbl.pfxlen = pfxlen
-	ltbl.crit = c
-
-	prefix := (*short.Oligo)(short.New(pfxlen))
-	ltbl.pfxtbl = make([]*Table, (1<<(pfxlen*2)))
-	done := make(chan uint64)
-	for {
-		go func(pfx *short.Oligo) {
-			idx := pfx.Uint64()
-			ltbl.pfxtbl[idx] = BuildDecodingTable(pfx, olen, bits, c)
-			done <- idx
-		}(prefix.Clone().(*short.Oligo))
-
-		if !prefix.Next() {
-			break
-		}
-	}
-
-
-	for i := 0; i < len(ltbl.pfxtbl); i++ {
-		<-done
-	}
-
-	ltbl.maxval = int64(ltbl.MaxVal())
-	return
 }

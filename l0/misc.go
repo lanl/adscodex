@@ -4,23 +4,17 @@ import (
 	"adscodex/criteria"
 )
 
-func MaxVal(oligoLen int, c criteria.Criteria) int64 {
-	tbl := getEncodeTable(oligoLen, c)
+func MaxVal(oligoLen, mindist int, c criteria.Criteria) uint64 {
+	tbl := getTable(c, oligoLen, mindist)
 	if tbl == nil {
-		return -1
+		return 0
 	}
 
 	return tbl.maxval
 }
 
-func MaxBits(oligoLen int, c criteria.Criteria) int {
-	tbl := getEncodeTable(oligoLen, c)
-	if tbl == nil {
-		return -1
-	}
-
-	// TODO: we can store the value in the lookup table if we need it faster
-	v := MaxVal(oligoLen, c)
+func MaxBits(oligoLen, mindist int, c criteria.Criteria) int {
+	v := MaxVal(oligoLen, mindist, c)
 	if v <= 0 {
 		return -1
 	}
@@ -31,14 +25,4 @@ func MaxBits(oligoLen int, c criteria.Criteria) int {
 	}
 
 	return n
-}
-
-// what oligoLen can store the specified number of bits
-func Bits2OligoLen(bitnum int, c criteria.Criteria) int {
-	oligoLen := 2*bitnum
-	for MaxBits(oligoLen, c) < bitnum {
-		oligoLen++
-	}
-
-	return oligoLen
 }

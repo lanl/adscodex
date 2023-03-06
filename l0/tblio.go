@@ -6,34 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"adscodex/oligo/short"
 	"adscodex/criteria"
 )
-
-var tblPath = "../tbl"
-
-func SetLookupTablePath(path string) {
-	tblPath = path
-}
 
 func (tbl *Table) Write(w io.Writer) (err error) {
 	var buf []byte
 
 	if tbl == nil {
 		buf = Pint32(0, buf)
+		buf = Pint64(0, buf)
 		buf = Pint32(0, buf)
-		buf = Pint64(0, buf)
-		buf = Pint64(0, buf)
+		buf = Pint32(0, buf)
 		buf = Pint32(0, buf)
 	} else {
-		buf = Pint32(uint32(tbl.bits), buf)
 		buf = Pint32(uint32(tbl.prefix.Len()), buf)
 		buf = Pint64(tbl.prefix.Uint64(), buf)
-		buf = Pint64(tbl.maxval, buf)
-		buf = Pint32(uint32(len(tbl.tbl)), buf)
+		buf = Pint32(uint32(tbl.olen), buf)
+		buf = Pint32(uint32(tbl.mindist), buf)
+		buf = Pint32(uint32(len(tbl.etbl)), buf)
 
-		for _, n := range tbl.tbl {
+		for _, n := range tbl.etbl {
 			buf = Pint64(n, buf)
 		}
 	}
@@ -48,30 +43,38 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	var v64 uint64
 	var p []byte
 
-	buf := make([]byte, 28)
+	buf := make([]byte, 24)
 
 	n, err = r.Read(buf)
 	if err != nil {
 		return
-	} else if n != 28 {
+	} else if n != 24 {
 		return errors.New("short read")
 	}
 
 	v, p = Gint32(buf)
-	tbl.bits = int(v)
-	v, p = Gint32(p)
 	v64, p = Gint64(p)
-	tbl.prefix = short.Val(int(v), v64)
+	if v != 0 {
+		tbl.prefix = short.Val(int(v), v64)
+	}
 
-	tbl.maxval, p = Gint64(p)
+	v, p = Gint32(p)
+	tbl.olen = int(v)
+
+	v, p = Gint32(p)
+	tbl.mindist = int(v)
+
 	v, p = Gint32(p)
 	tlen := int(v)
+	tbl.maxval = uint64(tlen)
 
+
+	tbl.dmap = make(map[uint64]int)
 	if tlen == 0 {
 		return
 	}
 
-	tbl.tbl = make([]uint64, tlen)
+	tbl.etbl = make([]uint64, tlen)
 	buf = make([]byte, tlen * 8)
 	n, err = r.Read(buf)
 	if err != nil {
@@ -83,13 +86,21 @@ func (tbl *Table) Read(r io.Reader) (err error) {
 	p = buf
 	for i := 0; i < tlen; i++ {
 		v64, p = Gint64(p)
-		tbl.tbl[i] = v64
+		tbl.etbl[i] = v64
 	}
 
+	tbl.trie, _ = NewTrie(nil)
+	for i := 0; i < tlen; i++ {
+		ol := short.Val(tbl.olen, tbl.etbl[i])
+		tbl.trie.add(ol, 0)
+		tbl.dmap[tbl.etbl[i]] = i
+	}
+
+//	fmt.Printf("trie size %d\n", tbl.trie.Size())
 	return
 }
 
-func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err error) {
+func LoadLookupTable(fname string) (lt *LookupTable, err error) {
 	var f *os.File
 	var v uint32
 	var id uint64
@@ -101,7 +112,7 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 	}
 	defer f.Close()
 
-	buf := make([]byte, 16)
+	buf := make([]byte, 20)
 	n, err = f.Read(buf)
 	if err != nil {
 		return
@@ -110,35 +121,48 @@ func readLookupTable(fname string, crit criteria.Criteria) (lt *LookupTable, err
 	}
 
 	id, buf = Gint64(buf)
-	if (id>>48) != ('L'<<8 | '0') {
-		return nil, fmt.Errorf("not ADS Codex lookup table: got %x expected %x", id>>48, 'L'<<8 | '0')
+	if (id>>48) != ('L'<<8 | 'V') {
+		return nil, fmt.Errorf("not ADS Codex lookup table: got %x expected %x", id>>48, 'L'<<8 | 'V')
 	}
 
 	id &= 0xFFFFFFFFFFFF	// 48 bits
-	if id != crit.Id() {
-		return nil, fmt.Errorf("criteria mistmatch: got %x expected %x", id, crit.Id())
+	crit := criteria.FindById(id)
+	if crit == nil {
+		return nil, fmt.Errorf("criteria with id %x not found", id)
 	}
-	
+
 	lt = new(LookupTable)
+	lt.crit = crit
+
 	v, buf = Gint32(buf)
 	lt.oligolen = int(v)
 	v, buf = Gint32(buf)
 	lt.pfxlen = int(v)
+	v, buf = Gint32(buf)
+	lt.mindist = int(v)
 
+//	fmt.Printf("Lookup Table: criteria %v olen %d pfxlen %d mindist %d\n", crit, lt.oligolen, lt.pfxlen, lt.mindist)
 	lt.pfxtbl = make([]*Table, (1<<(2*lt.pfxlen)))
+	lt.maxval = math.MaxUint64
 	for i := 0; i < len(lt.pfxtbl); i++ {
+//		fmt.Printf("Reading %v\n", short.Val(lt.pfxlen, uint64(i)))
 		tbl := new(Table)
 		err = tbl.Read(f)
 		if err != nil {
 			return
 		}
 
-		if tbl.tbl == nil {
+		if tbl.etbl == nil {
 			tbl = nil
 		}
 
 		lt.pfxtbl[i] = tbl
+		if tbl != nil && lt.maxval > tbl.maxval {
+			lt.maxval = tbl.maxval
+		}
 	}
+
+	lt.register()
 
 	return
 }
@@ -152,10 +176,11 @@ func (lt *LookupTable) Write(fname string) (err error) {
 	}
 	defer f.Close()
 
-	id := ('L'<<56 | '0'<<48) | lt.crit.Id()
+	id := ('L'<<56 | 'V'<<48) | lt.crit.Id()
 	buf := Pint64(id, nil)
 	buf = Pint32(uint32(lt.oligolen), buf)
 	buf = Pint32(uint32(lt.pfxlen), buf)
+	buf = Pint32(uint32(lt.mindist), buf)
 	_, err = f.Write(buf)
 	if err != nil {
 		return

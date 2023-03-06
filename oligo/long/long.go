@@ -167,6 +167,10 @@ func (o *Oligo) Slice(start, end int) oligo.Oligo {
 }
 
 func (o *Oligo) Clone() oligo.Oligo {
+	if o == nil {
+		return nil
+	}
+
 	no := new(Oligo)
 //	no.seq = make([]byte, no.len)
 //	copy(no.seq, o.seq)

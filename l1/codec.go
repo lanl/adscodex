@@ -1,12 +1,13 @@
 package l1
 
 import (
-	"math/bits"
+_	"math/bits"
 	"errors"
 	"fmt"
+	"math"
 _	"os"
 	"adscodex/oligo"
-	"adscodex/oligo/long"
+_	"adscodex/oligo/long"
 	"adscodex/criteria"
 	"adscodex/l0"
 	"github.com/klauspost/reedsolomon"
@@ -18,118 +19,142 @@ const (
 )
 
 const (
-	dblkSize = 17		// data block size
-	dblkMaxval = 2<<33
-)
-
-const (
 	// metadata checksums
 	CSumRS	= 0
 	CSumCRC	= 1
-
-	// data checksums
-	CSumParity = 0		// if the number of bits that are 1 is odd, the checksum bit is one
-	CSumEven = 1		// if the value is odd, the checksum bit is one
+	CSumNone = 2
 )
 
 // Level 1 codec
 type Codec struct {
-	blknum	int	// number of data blocks
-	mdnum	int	// number of metadata blocks
-	rsnum	int	// number of Reed-Solomon metadata blocks
-	mdsz	int	// length of the metadata block (in nts)
-	crit	criteria.Criteria
+	blknum		int	// number of data blocks
+	blksz		int	// length of the data block (in nts)
+	blkmindist	int	// minimum distance for data blocks
+	mdnum		int	// number of metadata blocks (including checksum blocks)
+	mdsz		int	// length of the metadata block (in nts)
+	mdcnum		int	// number of checksum metadata blocks
+	mdmindist	int	// minimum distance for metadata blocks
+	crit		criteria.Criteria
+	prefix		oligo.Oligo
+	suffix		oligo.Oligo
+	maxtime		int64
 
 	// optional settings with defaults
-	mdcsum	int	// md blocks checksum (CSumRS or CSumCRC, default CSumRS)
-	dtcsum	int	// data blocks checksum (CSumParity, CSumEven, ..., default CSumParity)
+	mdcsum		int	// md blocks checksum (CSumRS or CSumCRC, default CSumRS)
 
-	// error entries, for metadata recovery, sorted in decreasing probability order
-	ents	[]Eentry
+	dtbl		*l0.LookupTable
+	mtbl		*l0.LookupTable
+	grp		*l0.Group
 
-	olen	int	// oligo length, not including the primers
-	ec	reedsolomon.Encoder
-	crc	*crc.Table
+	olen		int	// oligo length, not including the primers
+	ec		reedsolomon.Encoder
+	crc		*crc.Table
+
+	datasz		int	// number of bytes that can be encoded in an oligo
+	dbits		int	// number of bits that can be encoded in a single data block
+	cmaxval		uint64	// maximum value that can be stored as metadata
+	cbits		int	// number of bits encoded in the metadata
 }
 
+type Entry struct {
+	Addr	uint64
+	EcFlag	bool
+	Dist	int
+	Data	[]byte
+	Count	int		// not set by the codec, provided externally
+}
 
 var Eprimer = errors.New("primer mismatch")
 var Emetadata = errors.New("can't recover metadata")
 
-var maxvals = []int {
-	3: 47,
-	4: 186,
-	5: 733,
-	6: 2889,
-	7: 11388,
-	8: 44891,
-	9: 176955,
-	10: 697537,
-	12: 10838676,
-	14: 168416727,
-}
-
 var crcParams = []crc.Parameters {
-//	0: crc.Parameters{ Width: 3, Polynomial: 0x3, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x7 },		// CRC-3/GSM
-//	0: crc.Parameters{ Width: 4, Polynomial: 0x3, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x0 },		// CRC-4/G-704
-	3: crc.Parameters{ Width: 5, Polynomial: 0x5, ReflectIn: false, ReflectOut: false, Init: 0x9, FinalXor: 0x0 },		// CRC-5-EPC
-	4: crc.Parameters{ Width: 7, Polynomial: 0x65, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-7F/5
-	5: crc.Parameters{ Width: 9, Polynomial: 0x79, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-9F/6.2
-	6: crc.Parameters{ Width: 11, Polynomial: 0x1eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-11F/8
-	7: crc.Parameters{ Width: 13, Polynomial: 0x16f, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-13F/8.2
+	3: crc.Parameters{ Width: 3, Polynomial: 0x3, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x7 },		// CRC-3/GSM
+	4: crc.Parameters{ Width: 4, Polynomial: 0x3, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x0 },		// CRC-4/G-704
+	5: crc.Parameters{ Width: 5, Polynomial: 0x5, ReflectIn: false, ReflectOut: false, Init: 0x9, FinalXor: 0x0 },		// CRC-5-EPC
+	7: crc.Parameters{ Width: 7, Polynomial: 0x65, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-7F/5
+	8: crc.Parameters{ Width: 8, Polynomial: 0xa7, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x0 },		// CRC-8/BLUETOOTH
+	9: crc.Parameters{ Width: 9, Polynomial: 0x79, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },		// CRC-9F/6.2
+	10: crc.Parameters{ Width: 10, Polynomial: 0x3d9, ReflectIn: false, ReflectOut: false, Init: 0x3ff, FinalXor: 0x0 },	// CRC-10/CDMA2000
+	11: crc.Parameters{ Width: 11, Polynomial: 0x1eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-11F/8
+	13: crc.Parameters{ Width: 13, Polynomial: 0x16f, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },	// CRC-13F/8.2
 
-	8: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-15/CAN
-	9: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-17
-	10: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
-	12: crc.Parameters{ Width: 22, Polynomial: 0x5781eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-23K/6
-//	12: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
-	14: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
-	16: crc.Parameters{ Width: 30, Polynomial: 0x2030b9c7, ReflectIn: false, ReflectOut: false, Init: 0x3fffffff, FinalXor: 0x3fffffff },	// CRC-30/CDMA
-	18: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
+	15: crc.Parameters{ Width: 15, Polynomial: 0x4599, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-15/CAN
+	16: crc.Parameters{ Width: 16, Polynomial: 0x8005, ReflectIn: true, ReflectOut: true, Init: 0x0, FinalXor: 0x0 },			// CRC-16/ARC
+	17: crc.Parameters{ Width: 17, Polynomial: 0x1685b, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-17
+	19: crc.Parameters{ Width: 19, Polynomial: 0x23af3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
+	22: crc.Parameters{ Width: 22, Polynomial: 0x5781eb, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// CRC-23K/6
+	23: crc.Parameters{ Width: 23, Polynomial: 0x16f3a3, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			// 
+	27: crc.Parameters{ Width: 27, Polynomial: 0x4b7aa27, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
+	30: crc.Parameters{ Width: 30, Polynomial: 0x2030b9c7, ReflectIn: false, ReflectOut: false, Init: 0x3fffffff, FinalXor: 0x3fffffff },	// CRC-30/CDMA
+	37: crc.Parameters{ Width: 37, Polynomial: 0x41, ReflectIn: false, ReflectOut: false, Init: 0x0, FinalXor: 0x0 },			//
 }
 
-func NewCodec(blknum, mdsz, mdnum, rsnum int, crit criteria.Criteria) (c *Codec, err error) {
+func NewCodec(prefix, suffix oligo.Oligo, blknum, blksz, blkmindist, mdnum, mdsz, mdcnum, mdmindist int, crit criteria.Criteria, maxtime int64) (c *Codec, err error) {
 	c = new(Codec)
+	c.prefix = prefix
+	c.suffix = suffix
 	c.blknum = blknum
-	c.rsnum = rsnum
+	c.blksz = blksz
+	c.blkmindist = blkmindist
+	c.mdnum = mdnum
 	c.mdsz = mdsz
+	c.mdcnum = mdcnum
+	c.mdmindist = mdmindist
 	c.crit = crit
 	c.mdcsum = CSumCRC
-//	c.ents = []Eentry { Eentry{1.0, 0, nil} }
+	c.maxtime = maxtime
 
-	c.mdnum = mdnum
-	if c.mdnum - c.rsnum < 1 || (c.mdnum - c.rsnum) < c.rsnum {
+	// add a metadata block at the end of the oligo if required
+	if c.mdnum - c.mdcnum < 1 || (c.mdnum - c.mdcnum) < c.mdcnum {
 		c.mdnum++
 	}
 
-	// TODO: make it work with longer metadata blocks
-//	if maxvals[mdsz * rsnum] == 0 {
-//		return nil, fmt.Errorf("unsupported metadata size: %d", mdsz)
-//	}
+	// get the lookup tables for data blocks
+	if c.dtbl, err = l0.LoadLookupTable(l0.LookupTableFilename(crit, blksz, blkmindist)); err != nil {
+		return nil, fmt.Errorf("error while loading encoding table: %v\n", err)
+	}
+
+	// get the lookup tables for the metadata blocks
+	if c.mtbl, err = l0.LoadLookupTable(l0.LookupTableFilename(crit, mdsz, mdmindist)); err != nil {
+		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
+	}
 
 	if err := c.updateChecksums(); err != nil {
 		return nil, err
 	}
 
-	// get the lookup tables for data blocks
-	if err := l0.LoadOrGenerateEncodeTable(17, crit); err != nil {
-		return nil, fmt.Errorf("error while loading encoding table: %v\n", err)
+//	fmt.Printf("dtbl %p mtbl %p\n", c.dtbl, c.mtbl)
+	var lts []*l0.LookupTable
+	n := c.blknum
+	if n < c.mdnum {
+		n = c.mdnum
 	}
 
-	if err := l0.LoadOrGenerateDecodeTable(17, crit); err != nil {
-		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
+	for i := 0; i < n; i++ {
+		if i < c.blknum {
+			lts = append(lts, c.dtbl)
+		}
+
+		if i < c.mdnum {
+			lts = append(lts, c.mtbl)
+		}
 	}
 
-	// get the lookup tables for the metadata blocks
-	if err := l0.LoadOrGenerateEncodeTable(mdsz, crit); err != nil {
-		return nil, fmt.Errorf("error while loading encoding table: %v\n", err)
+	c.grp, err = l0.NewGroup(prefix, lts, maxtime)	// FIXME make it easier to specify the steps4pos
+	if err != nil {
+		return nil, err
 	}
 
-	if err := l0.LoadOrGenerateDecodeTable(mdsz, crit); err != nil {
-		return nil, fmt.Errorf("error while loading decoding table: %v\n", err)
-	}
+	// how many bits can we encode in the oligo?
+	dbits := c.blknum * int(math.Log2(float64(c.dtbl.MaxVal())))
 
-	c.ents = generateErrorEntries(0.01, 0.01, 0.01, 4)
+	// how many bits can we encode per data block?
+	c.dbits = dbits / c.blknum
+
+	// we want each oligo to encode 8-bit aligned data
+	c.datasz = (c.dbits * c.blknum) / 8
+
+	c.olen = c.blksz * c.blknum + c.mdsz * c.mdnum + prefix.Len() + suffix.Len()
 	return
 }
 
@@ -139,57 +164,47 @@ func (c *Codec) SetMetadataChecksum(cs int) error {
 	return c.updateChecksums()
 }
 
-// Change which checksum algorithm is used to protect the data blocks
-func (c *Codec) SetDataChecksum(cs int) error {
-	if cs != CSumParity && cs != CSumEven {
-		return fmt.Errorf("invalid data checksum type: %d", cs)
+func (c *Codec) updateChecksums() (err error) {
+	mdmaxval := c.mtbl.MaxVal()
+	cmaxval := math.Pow(float64(mdmaxval), float64(c.mdnum - c.mdcnum))
+	c.cbits = int(math.Floor(math.Log2(float64(mdmaxval))))
+	c.cmaxval = uint64(cmaxval)
+//	fmt.Printf("cmaxval: %v\n", cmaxval)
+
+	if c.mdcnum == 0 {
+		c.mdcsum = CSumNone
 	}
 
-	c.dtcsum = cs
-	return nil
-}
-
-func (c *Codec) SetErrorModel(fname string, maxerrs int) (err error) {
-	c.ents, err = readErrorEntries(fname, maxerrs)
-	return
-}
-
-func (c *Codec) SetSimpleErrorModel(ierr, derr, serr float64, maxerrs int) {
-	c.ents = generateErrorEntries(ierr, derr, serr, maxerrs)
-}
-
-func (c *Codec) updateChecksums() (err error) {
 	switch c.mdcsum {
 	default:
 		err = errors.New("invalid metadata checksum")
 		return
 
 	case CSumRS:
-		if c.mdsz > 4 {
-			err = errors.New("RS currently supports no more than 4nt of length")
+		err = errors.New("RS is currently not supported")
+		return
+/*
+		if mdmaxval > 255 {
+			err = errors.New("RS currently supports no more than 8 bits for metadata block")
 			return
 		}
 
 		c.crc = nil
 		if c.ec == nil {
-			c.ec, err = reedsolomon.New(c.mdnum - c.rsnum, c.rsnum)
+			c.ec, err = reedsolomon.New(c.mdnum - c.mdrsnum, c.mdrsnum)
 		}
-
-		c.olen = c.blknum * dblkSize +		// data blocks
-			c.mdsz*(c.mdnum - c.rsnum) +	// metadata blocks
-			5*c.rsnum		  	// metadata erasure blocks (they have to be able to store a byte)
+*/
 
 	case CSumCRC:
 		c.ec = nil
-		n := c.mdsz * c.rsnum
-		if len(crcParams) <= n || crcParams[n].Width == 0 {
-			err = fmt.Errorf("unsupported CRC length: %d", n)
+		if len(crcParams) <= c.cbits || crcParams[c.cbits].Width == 0 {
+			err = fmt.Errorf("unsupported CRC length: %d", c.cbits)
 			return
 		}
 
-		c.crc = crc.NewTable(&crcParams[n])
-		c.olen = c.blknum * dblkSize +		// data blocks
-			c.mdnum * c.mdsz		// metadata blocks (including erasure)
+		c.crc = crc.NewTable(&crcParams[c.cbits])
+
+	case CSumNone:
 	}
 
 	return
@@ -197,17 +212,23 @@ func (c *Codec) updateChecksums() (err error) {
 
 // number of blocks per oligo
 func (c *Codec) BlockNum() int {
-	return c.blknum
+	// FIXME: L2 actually needs the number of bytes right now
+	return c.datasz
+//	return c.blknum
 }
 
-// number of bytes per data block
-func (c *Codec) BlockSize() int {
-	return 4
+// number of bits per data block
+func (c *Codec) BlockBits() int {
+	return c.dbits
 }
 
 // length of the data saved per oligo (in bytes)
 func (c *Codec) DataLen() int {
-	return c.blknum * 4
+	return c.datasz
+}
+
+func (c *Codec) BlockSize() int {
+	return 1
 }
 
 func (c *Codec) OligoLen() int {
@@ -216,207 +237,107 @@ func (c *Codec) OligoLen() int {
 
 // maximum address that the codec can encode
 func (c *Codec) MaxAddr() uint64 {
-	mdnum := c.mdnum - c.rsnum
-
-	ma := uint64(1)
-	maxval :=uint64( maxvals[c.mdsz])
-	for i := 0; i < mdnum; i++ {
-		ma *= maxval
-	}
-
-	return uint64(ma / 4)
-}
-
-func (c *Codec) mdcsumLen() (n int) {
-	switch c.mdcsum {
-	default:
-		n = -1
-
-	case CSumRS:
-		n = 5
-
-	case CSumCRC:
-		n = c.mdsz
-	}
-
-	return
+	return uint64(c.cmaxval / 2)
 }
 
 // Encode data into a an oligo
-// The p5 and p3 oligos specify the 5'-end and the 3'-end primers that start and end the oligo. At the
-// moment p5 needs to be at least 4 nts long.
 // The ef parameter specifies whether the oligo is an erasure oligo (i.e. provides some erasure data 
 // instead of data data).
-func (c *Codec) Encode(p5, p3 oligo.Oligo, address uint64, ef bool, data [][]byte) (o oligo.Oligo, err error) {
-	o, err = c.encode(p5, p3, address, ef, false, data)
-	if err != nil {
-		return
+func (c *Codec) Encode(address uint64, ef bool, data []byte) (ret oligo.Oligo, err error) {
+	var mdb, db []uint64
+	var ol oligo.Oligo
+
+	if len(data) != c.datasz {
+		return nil, fmt.Errorf("L1: invalid data size %d:%d", len(data), c.datasz)
 	}
 
-	if gc := oligo.GCcontent(o); gc > 0.6 {
-		var o1 oligo.Oligo
-
-		o1, err = c.encode(p5, p3, address, ef, true, data)
-		if err != nil {
-			return
-		}
-
-		if gc1 := oligo.GCcontent(o1); gc1 < gc {
-			o = o1
-		}
-	}
-
-	return
-}
-
-// The actual implementation of the encoding. 
-// The sf paramter defines if the payload needs to be negated so 
-// the GC content is kept low.
-func (c *Codec) encode(p5, p3 oligo.Oligo, address uint64, ef, sf bool, data [][]byte) (o oligo.Oligo, err error) {
-	var mdb []uint64
-	var b oligo.Oligo
-
-	if len(data) != c.BlockNum() {
-		return nil, errors.New("invalid block number")
-	}
-
-	for _, blk := range data {
-		if len(blk) != c.BlockSize() {
-			return nil, errors.New("invalid data size")
-		}
-	}
-
-	// TODO: should we make it work without primers?
-	if p5.Len() < 4 {
-		return nil, errors.New("5'-end primer must be at least four nt long")
-	}
-
-	mdb, err = c.calculateMdBlocks(address, ef, sf)
+	mdb, err = c.calculateMdBlocks(address, ef)
 	if err != nil {
 		return nil, err
 	}
 
-	// negate the values if sf is true
-	if sf {
-		d := make([][]byte, len(data))
-		for i := 0; i < len(data); i++ {
-			d[i] = make([]byte, len(data[i]))
-			for j := 0; j < len(data[i]); j++ {
-				d[i][j] = ^data[i][j]
-			}
-		}
-		data = d
-
-		// TODO: do something similar for metadata
+	db, err = c.calculateDataBlocks(data)
+	if err != nil {
+		return nil, err
 	}
 
-	// Construct the oligo
-	// start with the 5'-end primer
-	o, _ = long.Copy(p5)
-	var i int
-	for i = 0; i < c.blknum; i++ {
-		buf := data[i]
-
-		// combine the data bytes into uint64
-		v := uint64(buf[0]) | (uint64(buf[1]) << 8) | (uint64(buf[2]) << 16) |
-                        (uint64(buf[3]) << 24)
-
-		// calculate parity
-		var parity uint64
-		switch c.dtcsum {
-		default:
-			panic("unknown data checksum type")
-
-		case CSumParity:
-			parity = uint64(bits.OnesCount64(v)) % 2
-
-		case CSumEven:
-			parity = v % 2
-		}
-
-		v = (v<<1) + parity
-
-		// append the data block
-		prefix := o.Slice(o.Len() - 4, o.Len())
-		b, err = l0.Encode(prefix, v, dblkSize, c.crit)
-		if err != nil {
-			return nil, err
-		}
-		o.Append(b)
-
-		// append the metadata block
-		prefix = o.Slice(o.Len() - 4, 0)
-
-		// FIXME: the RS implementation that we are using works on bytes
-		// So the erasure metadata blocks need to be 8 bits long, no matter
-		// what the size of the metadata blocks is. 
-		// We should find a variable-bit-length RS implementation for the 
-		// metadata
-		sz := c.mdsz
-		if i >= c.mdnum - c.rsnum {
-			sz = c.mdcsumLen()
-		}
-
-		b, err = l0.Encode(prefix, mdb[i], sz, c.crit)
-		if err != nil {
-			return nil, err
-		}
-
-		o.Append(b)
+	var vals []int
+	n := c.blknum
+	if n < c.mdnum {
+		n = c.mdnum
 	}
 
-	for ; i < c.mdnum; i++ {
-		prefix := o.Slice(o.Len() - 4, 0)
-
-		// FIXME: the RS implementation that we are using works on bytes
-		// So the erasure metadata blocks need to be 8 bits long, no matter
-		// what the size of the metadata blocks is. 
-		// We should find a variable-bit-length RS implementation for the 
-		// metadata
-		sz := c.mdsz
-		if i >= c.mdnum - c.rsnum {
-			sz = c.mdcsumLen()
+	for i := 0; i < n; i++ {
+		if i < c.blknum {
+			vals = append(vals, int(db[i]))
 		}
 
-		b, err = l0.Encode(prefix, mdb[i], sz, c.crit)
-		if err != nil {
-			return nil, err
+		if i < c.mdnum {
+			vals = append(vals, int(mdb[i]))
 		}
-
-		o.Append(b)
 	}
 
-	// append the 3'-end primer
+	ol, err = c.grp.Encode(vals)
+	if err != nil {
+		ret = nil
+		return
+	}
+
+//	fmt.Printf("Encode: %v %v %v %v dbits %d \n", vals, ol, db, mdb, c.dbits)
+	// append the prefix
+	ret = c.prefix.Clone()
+	ret.Append(ol)
+
+	// append the suffix
 	// FIXME: we don't apply the criteria when appending p3,
 	// so theoretically we can have homopolymers etc.
-	o.Append(p3)
+	ret.Append(c.suffix)
+	return
+}
 
-	return o, nil
+func (c *Codec) calculateDataBlocks(data []byte) (ret []uint64, err error) {
+	var val uint64
+
+//	fmt.Printf("calcDataBlocks %x %v\n", data, data)
+	dmask := uint64(1) << c.dbits - 1
+	bits := 0
+	n := len(data) - 1
+	for len(ret) < c.blknum {
+		if n < 0 || bits > c.dbits {
+			ret = append(ret, val & dmask)
+			val >>= c.dbits
+			bits -= c.dbits
+//			fmt.Printf("\tval %x bits %d append %x\n", val, bits, ret[len(ret) - 1])
+		} else {
+			val = (uint64(data[n]) << bits) | val // (val << 8) | uint64(data[n])
+			n--
+			bits += 8
+//			fmt.Printf(">>> val %x n %d bits %d\n", val, n, bits)
+		}
+	}
+
+	return
 }
 
 // calculate the metadata blocks based on the metadata
-func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error) {
+func (c *Codec) calculateMdBlocks(address uint64, ef bool) ([]uint64, error) {
 	maxaddr := c.MaxAddr()
 	if address > maxaddr {
-		return nil, errors.New("address too big")
+		return nil, fmt.Errorf("address too big %d:%d", address, maxaddr)
 	}
 
 	// calculate the metadata value
-	if sf {
-		address += maxaddr * 2
-	}
-
 	if ef {
 		address += maxaddr
 	}
 
 	// split the metadata into md blocks
-	mdnum := uint64(c.mdnum - c.rsnum)
-	mdlen := uint64(maxvals[c.mdsz])
-	mdb := make([]uint64, mdnum + uint64(c.rsnum))
+	mdnum := uint64(c.mdnum - c.mdcnum)
+	mdmaxval := uint64(c.mtbl.MaxVal())
+	mdb := make([]uint64, c.mdnum)
 	for i := int(mdnum - 1); i >= 0; i-- {
-		mdb[i] = address % mdlen
-		address /= mdlen
+		mdb[i] = address % mdmaxval
+		address /= mdmaxval
 	}
 
 	if address != 0 {
@@ -427,6 +348,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 	default:
 		panic("unsupported md checksum")
 
+/*
 	case CSumRS:
 		if c.mdsz * 2 > 8 {
 			panic("metadata block too big (FIXME)")
@@ -448,6 +370,7 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 		for i := c.mdnum - c.rsnum; i < c.mdnum; i++ {
 			mdb[i] = uint64(mdshard[i][0])
 		}
+*/
 
 	case CSumCRC:
 		cval := c.crc.InitCrc()
@@ -459,23 +382,119 @@ func (c *Codec) calculateMdBlocks(address uint64, ef, sf bool) ([]uint64, error)
 		}
 		cval = c.crc.CRC(cval)
 //		cv := cval
-		mval := uint64(maxvals[c.mdsz])
-		for i := c.mdnum - c.rsnum; i < c.mdnum; i++ {
-			mdb[i] = cval % mval
-			cval /= mval
+		for i := c.mdnum - c.mdcnum; i < c.mdnum; i++ {
+			mdb[i] = cval % mdmaxval
+			cval /= mdmaxval
 		}
 
 //		fmt.Fprintf(os.Stderr, "\tmdblks %v crc %d rem %d\n", mdb, cv, cval)
+
+	case CSumNone:
 	}
 
 	return mdb, nil
+}
+
+// Decodes an oligo into the metadata and data it contains
+// If the recover parameter is true, try harder to correct the metadata
+// Returns a byte array for each data block that was recovered
+// (i.e. the parity for the block was correct)
+func (c *Codec) Decode(ol oligo.Oligo) (address uint64, ef bool, data []byte, errdist int, err error) {
+	var vals []int
+	var db, md []uint64
+
+	col := c.cutPrimers(ol)
+	if col == nil {
+		err = fmt.Errorf("primers not found: %v\n", ol)
+		return
+	}
+
+	vals, errdist, err = c.grp.Decode(c.prefix, col)
+	if err != nil {
+		return
+	}
+
+	// split data and metadata blocks
+	for i := 0; i < c.blknum + c.mdnum;  {
+		if len(db) < c.blknum {
+			db = append(db, uint64(vals[i]))
+			i++
+		}
+
+		if len(md) < c.mdnum {
+			md = append(md, uint64(vals[i]))
+			i++
+		}
+	}
+
+//	fmt.Printf("Decode: %v %v : %v %v\n", vals, col, db, md)
+
+	address, ef, err = c.recoverMetadata(md)
+	if err != nil {
+		return
+	}
+
+	data = c.recoverData(db)
+	return
+}
+
+func (c *Codec) cutPrimers(ol oligo.Oligo) (ret oligo.Oligo) {
+	// First cut the primers
+	pos5, len5 := oligo.Find(ol, c.prefix, PrimerErrors)
+	if pos5 != 0 {
+		return
+	}
+
+	pos3, _/*len3*/ := oligo.Find(ol, c.suffix, PrimerErrors)
+	if pos3 < 0 /*|| pos3+len3 != ol.Len()*/ {
+		return
+	}
+
+	ret = ol.Slice(pos5+len5, pos3)
+//	prefix = p5.Slice(p5.Len() - 4, p5.Len())
+
+	return
+}
+
+func (c *Codec) recoverMetadata(mb []uint64) (address uint64, ef bool, err error) {
+	var md uint64
+
+	if ok, e := c.checkMDBlocks(mb); !ok {
+		if e != nil {
+			err = e
+		} else {
+			err = fmt.Errorf("metadata checksum error")
+		}
+
+		return
+	}
+
+	mdmaxval := uint64(c.mtbl.MaxVal())
+	for i := 0; i < c.mdnum - c.mdcnum; i++ {
+		nmd := md * mdmaxval + mb[i]
+		if nmd < md {
+			// overflow, panic
+			panic("metadata overflow")
+		}
+
+		md = nmd
+	}
+
+	maxaddr := c.MaxAddr()
+	if md >= maxaddr {
+		ef = true
+		md -= maxaddr
+	}
+
+	address = md
+	return
 }
 
 func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 	switch c.mdcsum {
 	default:
 		panic("invalid metadata checksum type")
-
+/*
 	case CSumRS:
 		mdshards := make([][]byte, len(mdblks))
 		for i, v := range mdblks {
@@ -486,74 +505,60 @@ func (c *Codec) checkMDBlocks(mdblks []uint64) (ok bool, err error) {
 		if err != nil {
 			ok = false
 		}
+*/
 
 	case CSumCRC:
 		cval := c.crc.InitCrc()
 //		fmt.Fprintf(os.Stderr, "- mdblks %v\n", mdblks)
-		for i := 0; i < c.mdnum - c.rsnum; i++ {
+		for i := 0; i < c.mdnum - c.mdcnum; i++ {
 			cval = c.crc.UpdateCrc(cval, []byte { byte(mdblks[i]), byte(mdblks[i]>>8) })
 //			fmt.Fprintf(os.Stderr, "\t%v: %v\n", []byte { byte(mdblks[i]), byte(mdblks[i]>>8)}, cval)
 		}
 		cval = c.crc.CRC(cval)
 
 		cval2 := uint64(0)
-		mval := uint64(maxvals[c.mdsz])
-		for i := c.mdnum - 1; i >= c.mdnum - c.rsnum; i-- {
+		mval := uint64(c.mtbl.MaxVal())
+		for i := c.mdnum - 1; i >= c.mdnum - c.mdcnum; i-- {
 			cval2 = (cval2 * mval) + mdblks[i]
 		}
 
-//		fmt.Fprintf(os.Stderr, "\tmdblks %v crc %d calculated crc %d\n", mdblks, cval2, cval)
-
 		ok = cval == cval2
+
+	case CSumNone:
+		ok = true
 	}
 
 	return
 }
 
-func (c *Codec) checkDataBlock(dblk uint64) (ok bool, data []byte) {
-	if dblk >= dblkMaxval {
-		return false, nil
+func (c *Codec) recoverData(db []uint64) (ret []byte) {
+	var val uint64
+
+	ret = make([]byte, c.datasz)
+
+//	fmt.Printf("recoverData %v\n", db)
+	bits := 0
+	n := 0 // len(db) - 1
+	i := c.datasz - 1
+	for i >= 0 /*len(ret) != c.datasz*/ {
+		if bits > c.dbits {
+			d := byte(val)
+
+			ret[i] = d // ret = append(ret, d)
+			i--
+			val >>= 8
+			bits -= 8
+//			fmt.Printf("\tval %x bits %d append %x\n", val, bits, d)
+		} else {
+			if n < len(db) {
+				val = db[n]<<bits | val // (val << c.dbits) | db[n]
+				n++
+			}
+
+			bits += c.dbits
+//			fmt.Printf("<<< val %x n %d bits %d\n", val, n, bits)
+		}
 	}
 
-	pbit := int(dblk & 1)
-	dblk >>= 1
-
-	ok = false
-	switch c.dtcsum {
-	default:
-		panic("invalid data block checksum type")
-
-	case CSumParity:
-		ok = (bits.OnesCount64(dblk) + pbit) % 2 == 0
-
-	case CSumEven:
-		ok = (dblk + uint64(pbit)) % 2  == 0
-	}
-
-
-	if !ok {
-		return
-	}
-
-	data = make([]byte, 4)
-	data[0] = byte(dblk)
-	data[1] = byte(dblk >> 8)
-	data[2] = byte(dblk >> 16)
-	data[3] = byte(dblk >> 24)
-
-	return
-}
-
-// Decodes an oligo into the metadata and data it contains
-// If the recover parameter is true, try harder to correct the metadata
-// Returns a byte array for each data block that was recovered
-// (i.e. the parity for the block was correct)
-func (c *Codec) Decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
-	address, ef, data, err = c.decode(p5, p3, ol, difficulty)
-	return
-}
-
-func (c *Codec) decode(p5, p3, ol oligo.Oligo, difficulty int) (address uint64, ef bool, data [][]byte, err error) {
-	address, ef, data, err = c.tryDecode(p5, p3, ol, difficulty)
 	return
 }

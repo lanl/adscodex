@@ -7,15 +7,18 @@ import (
 	"adscodex/criteria"
 )
 
-var encfile = flag.String("e", "", "encoding table file name")
-var decfile = flag.String("d", "", "decoding table file name")
-var olen = flag.Int("l", 17, "oligo length")
-var bits = flag.Int("b", 20, "bits in table")
-var crit = flag.String("c", "h4g2", "criteria (currently only h4g2 supported)")
+var out = flag.String("o", "", "table file name")
+var olen = flag.Int("olen", 10, "oligo length")
+var mindist = flag.Int("mindist", 3, "minimum distance between oligos in the table")
+var crit = flag.String("c", "h4g2", "criteria")
+var file = flag.String("f", "", "print specified table stats")
+var shuf = flag.Bool("shuffle", true, "shuffle the oligos")
+var maxval = flag.Int("maxval", 0, "maximum number of oligos in the table")
 
 func main() {
 	var c criteria.Criteria
 	var err error
+	var lt *l0.LookupTable
 
 	flag.Parse()
 
@@ -25,31 +28,30 @@ func main() {
 		return
 	}
 
-	if *encfile != "" {
-		lt := l0.BuildEncodingLookupTable(4, *olen, *bits, c)
-		err = lt.Write(*encfile)
+	if *file != "" {
+		var err error
+
+		lt, err = l0.LoadLookupTable(*file)
 		if err != nil {
-			goto error
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		fmt.Printf("%v\n", lt)
+	} else {
+		fname := l0.LookupTableFilename(c, *olen, *mindist)
+		if *out != "" {
+			fname = *out
 		}
 
-		fmt.Printf("Encoding Maxvalues:\n%v\n", lt.MaxVals())
-		fmt.Printf("Encoding Maxvalue:\n%v\n", lt.MaxVal())
-	}
-
-	if *decfile != "" {
-		lt := l0.BuildDecodingLookupTable(4, *olen, *bits, c)
-		err = lt.Write(*decfile)
+		lt = l0.BuildLookupTable(c, *olen, *mindist, *shuf, *maxval)
+		err = lt.Write(fname)
 		if err != nil {
-			goto error
+			fmt.Printf("Error: %v\n", err)
+			return
 		}
-
-		fmt.Printf("Decoding Maxvalules:\n%v\n", lt.MaxVals())
-		fmt.Printf("Decoding Maxvalue:\n%v\n", lt.MaxVal())
 	}
 
-	return
+	fmt.Printf("Maxvalue: %v\n", lt.MaxVal())
 
-error:
-	fmt.Printf("Error: %v\n", err)
 	return
 }

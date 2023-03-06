@@ -170,6 +170,10 @@ func (o *Oligo) Slice(start, end int) oligo.Oligo {
 }
 
 func (o *Oligo) Clone() oligo.Oligo {
+	if o == nil {
+		return nil
+	}
+
 	return &Oligo{o.len, o.seq}
 }
 
